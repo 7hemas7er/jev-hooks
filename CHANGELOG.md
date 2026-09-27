@@ -3,10 +3,23 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## 0.1.1 — 2026-09-27
+
+A version bump so that `/plugin update` picks up the Node fix below: Claude Code
+compares version numbers, not commits, so an installed 0.1.0 stayed on the first
+snapshot.
+
+### Fixed
+
+- The hooks find Node installed with nvm, fnm, volta, asdf, mise, n or Homebrew.
+  Claude Code runs hook commands without the interactive shell's PATH, so with Node
+  only under a version manager the review was skipped with a notice the model never
+  sees. Details under 0.1.0-dev → Fixed.
+
 ## 0.1.0-dev — first public preview
 
-Not released yet: `plugin.json` and `marketplace.json` say `0.1.0`, and the tag comes
-with the release commit.
+The first public snapshot, published as 0.1.0 in `plugin.json` and
+`marketplace.json`.
 
 ### Added
 

@@ -1,6 +1,6 @@
 {
   "name": "jev-hooks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Commit reviewer with typed questions (Jev or rizzo-flow): commit hook and jev-review CLI",
   "author": { "name": "7hemas7er" },
   "homepage": "https://github.com/7hemas7er/jev-hooks",
