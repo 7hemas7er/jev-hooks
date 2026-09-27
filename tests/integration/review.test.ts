@@ -248,7 +248,7 @@ test('without x_rizzo (Jev) up to parallel_other requests together, after the fi
 
 // ─── Error matrix ─────────────────────────────────────────────────────────────
 
-test('error matrix: Node missing or too old', { todo: 'outside the core: the CLI launcher in tests/cli/cli.test.ts (it says so, exit 4); the hook launcher hooks/run-node.sh has no test yet' })
+test('error matrix: Node missing or too old', { todo: 'outside the core: the CLI launcher in tests/cli/cli.test.ts (it says so, exit 4); the hook launcher hooks/run-node.sh in tests/hook/run-node.test.ts (it fails open with a notice)' })
 
 function layers(extra: { user?: ConfigLayers['user']; project?: ConfigLayers['project'] } = {}): ConfigLayers {
   return {

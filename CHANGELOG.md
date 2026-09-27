@@ -49,6 +49,18 @@ with the release commit.
   question texts, option order and key order. A control diff that does trigger the
   translated markers produced different bytes, so the check can detect a change.
 
+### Fixed
+
+- The hook launcher `hooks/run-node.sh` finds Node by itself. Claude Code starts hooks
+  without the PATH of the interactive shell, so a Node installed with nvm was not found
+  and the review was skipped on every commit. After `JEV_HOOKS_NODE` and the PATH, the
+  launcher now looks in the installs of nvm, fnm, volta, asdf, mise and n (the highest
+  version first), then in Homebrew and system paths, and keeps a candidate only if it is
+  Node ≥ 22.18 with type stripping. The search stops at the first that works, and the
+  `post-commit` hook still exits before any search when nothing is pending. When no
+  Node is found the notice now says where it looked and that `JEV_HOOKS_NODE` can point
+  to one.
+
 ### Upgrading from an earlier local build
 
 Nothing was released before this preview, but a build installed from a local clone

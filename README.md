@@ -205,10 +205,27 @@ From a local clone, to try or develop it:
 /plugin install jev-hooks@7hemas7er-jev-hooks
 ```
 
-Requirements: **Node ≥ 22.18** on the PATH the hooks see (it runs TypeScript by
-stripping types, with no build step and no dependencies). If your Node comes from nvm
-and the hooks cannot find it, set `JEV_HOOKS_NODE` to its full path. Without a suitable
-Node the hook skips the review with a notice instead of failing your commit.
+Requirements: **Node ≥ 22.18** (it runs TypeScript by stripping types, with no build
+step and no dependencies). Claude Code starts hooks without the PATH of your interactive
+shell, so the Node that nvm or fnm add from `~/.bashrc` is often not on it. The hook
+launcher looks for a Node ≥ 22.18 with type stripping by itself, in this order:
+
+1. `JEV_HOOKS_NODE`, if set;
+2. `node` (then `nodejs`) on the PATH the hooks see;
+3. version-manager installs, the highest version first: nvm (`$NVM_DIR`, default
+   `~/.nvm`), fnm (`$FNM_DIR`, `~/.local/share/fnm`, `~/.fnm`, and
+   `~/Library/Application Support/fnm` on macOS), volta (`$VOLTA_HOME`, default
+   `~/.volta`), asdf (`$ASDF_DATA_DIR`, default `~/.asdf`), mise (`$MISE_DATA_DIR`,
+   default `~/.local/share/mise`) and n (`$N_PREFIX`, default `/usr/local`);
+4. Homebrew and system paths: `/opt/homebrew/bin`, `/home/linuxbrew/.linuxbrew/bin`,
+   `/usr/local/bin`, `/usr/bin`.
+
+Each candidate costs one short `node` run to check its version, and the search stops at
+the first that passes, so it adds no noticeable time. Set `JEV_HOOKS_NODE` to the full
+path of a node binary only when the search picks the wrong one or finds none: a Node
+installed somewhere else, or a version manager whose directory variable is set only in
+your shell. Without a suitable Node the hook skips the review with a notice that says
+so, instead of failing your commit.
 
 Then open `/plugin`, pick jev-hooks and fill in its options:
 
