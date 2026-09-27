@@ -1,0 +1,4 @@
+{
+  "_comment": "Slow backend: every response arrives after 5 s, holding the lock as rizzo-flow does.",
+  "always": { "delay_ms": 5000 }
+}

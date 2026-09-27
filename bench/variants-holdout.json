@@ -1,0 +1,12 @@
+{
+  "_comment": "Variants for the holdout set (bench/holdout.jsonl): for each probability that checks.json asks of the model (the nouls and the choices with a value) only the text of config/checks.json, read the way the reviewer reads it (1-p(none) for choices with a value). The holdout set does not choose between wordings: it tells whether those chosen on dev.jsonl hold on new diffs, and gives the p for the calibration fit. A new question in checks.json must be added here (tests/bench/measure.test.ts checks it). Command: bench/MEASUREMENT.md.",
+  "hardcoded_secret": { "variants": { "attuale": { "from_checks": true } } },
+  "injection_risk": { "variants": { "attuale": { "from_checks": true } } },
+  "touches_auth": { "variants": { "attuale": { "from_checks": true } } },
+  "weakens_tests": { "variants": { "attuale": { "from_checks": true } } },
+  "adds_tests": { "variants": { "attuale": { "from_checks": true } } },
+  "breaks_api": { "variants": { "attuale": { "from_checks": true } } },
+  "data_migration": { "variants": { "attuale": { "from_checks": true } } },
+  "description_matches": { "variants": { "attuale": { "from_checks": true } } },
+  "debug_leftovers": { "variants": { "attuale": { "from_checks": true } } }
+}

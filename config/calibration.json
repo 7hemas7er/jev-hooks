@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "_comment": "The first matching profile wins. Key: x_rizzo.fingerprint, then model, then host. A calibrated profile goes AT THE TOP, with match.fingerprint. Per-question entries apply only when the sha256 of the sent text matches. Read only from the user layer or the plugin, never from the project.",
+  "wide_delta_logit": 1.39,
+  "profiles": [
+    {
+      "name": "spark-bf16-2026-09",
+      "match": { "fingerprint": "64219e54c725bb176157e0d2905bd3133401ee592ac4504660e5a8bf7310737a" },
+      "calibrated": false,
+      "choice": { "t": 3 },
+      "score": { "t": 3 },
+      "per_question": {
+        "hardcoded_secret": { "sha256": "8fcf8b054f63808c454c265895289150720668f8095d443c65fd3ee9999154a1" },
+        "injection_risk": { "sha256": "f183376890c7c4e48a161454d6d7aa177f55af5a0aa6615a73889f208c0295fa" },
+        "touches_auth": { "sha256": "47bcb633948180f4f5e13da51dc1125d0c83c7e705f8c0bea84efcabd6ec1b7a" },
+        "weakens_tests": { "sha256": "1feb3ec470b86f0ec13998002f90ba4736dae11ba8b7b9d01e63a7f6bfb0af12" },
+        "adds_tests": { "sha256": "e637c7a92d249a84aa22fdc41f70e0039e4ccd7af7e658b5c54e6392389f4f63" },
+        "breaks_api": { "sha256": "424250f372401bb7afe2851eac8c499cea5f610a993469b9381427e98e678c84" },
+        "data_migration": { "sha256": "b6ce1888d300422fcce9d8432a3bf698d330dfb7892df3a30d621258584ecbbe" },
+        "debug_leftovers": { "sha256": "ffde6e476c0ecee5896c8acc96b4efb6a47b3a607b3539c3d2f3d9121b866b26" }
+      },
+      "thresholds": { "hardcoded_secret": 0.1, "injection_risk": 0.99, "touches_auth": 0.7, "weakens_tests": 0.2, "adds_tests": 0.3, "breaks_api": 0.9, "data_migration": 0.2, "debug_leftovers": 0.4 },
+      "note": "The Spark measured on the bench on 2026-09-26 (rizzo-flow, Spark-X2.5-4B BF16): dev set bench/results/2026-09-26-dev-checks (118 diffs) and holdout set 2026-09-26-holdout (121 new diffs), with the checks.json questions tied by per_question.sha256. No transformation of nouls and of choices with a value: the thresholds are chosen on the raw p, to stay within about 3% false alarms on the dev set, and checked on the holdout set (TPR and FPR of each in the _why of its rule in policy.json, which has the same values). calibrated stays false: no Platt scaling has been fitted, so the thresholds of policy.json apply and these document them. Temperature 3 for choice and score as in rizzo-provisional: the bench did not measure them. Also valid for a router instance with the same GGUF and the same flags, which has the same fingerprint."
+    },
+    {
+      "name": "rizzo-provisional",
+      "match": { "model_prefix": "rizzo-" },
+      "calibrated": false,
+      "choice": { "t": 3 },
+      "score": { "t": 3 },
+      "note": "A rizzo with another fingerprint (another GGUF, another llama.cpp build). No Platt scaling on nouls and on choices with a value: a = 1/3 (T≈3, estimated by rizzo-flow on authored144, synthetic English texts rather than diffs) pushed negatives up towards the thresholds (0.02 → 0.22), while the thresholds of policy.json are chosen on the bench's raw p, where the measured wordings give negatives a mean between 0.02 and 0.18. The choice and score temperatures stay, which the bench did not measure. To be replaced by a profile with match.fingerprint and a calibration fit on the Spark."
+    },
+    {
+      "name": "jev",
+      "match": { "model_prefix": "jev-" },
+      "calibrated": false,
+      "note": "TypeSafe declares calibrated probabilities: identity. Not verified on diffs."
+    },
+    {
+      "name": "unknown",
+      "match": {},
+      "calibrated": false,
+      "band_delta_logit": 1.39,
+      "note": "Unrecognized backend: identity and a wide band (the band applies even without a calibration fit: it is caution)."
+    }
+  ]
+}

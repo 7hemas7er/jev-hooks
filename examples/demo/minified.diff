@@ -1,0 +1,7 @@
+diff --git a/static/app.min.js b/static/app.min.js
+new file mode 100644
+index 0000000..0b1d2e3
+--- /dev/null
++++ b/static/app.min.js
+@@ -0,0 +1 @@
++!function(){var e=document.querySelector("#app");e&&(e.textContent="hello")}();

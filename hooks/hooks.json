@@ -1,0 +1,13 @@
+{
+  "description": "jev-hooks: review of the diff before Claude's git commit (command hook, outside the sandbox), and a record of whether the reviewed commit happened. A hook is registered here only when the script it runs exists.",
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "if": "Bash(git *)", "command": "bash",
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "commit"], "timeout": 180, "statusMessage": "jev-review: reviewing the diff" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash",
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "post-commit"], "timeout": 15 } ] }
+    ]
+  }
+}

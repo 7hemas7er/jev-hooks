@@ -1,0 +1,4 @@
+{
+  "_comment": "A noul written as NaN, as Python's json.dumps would: only that question is discarded.",
+  "always": { "nan": ["hardcoded_secret"] }
+}

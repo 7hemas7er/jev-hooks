@@ -1,0 +1,4 @@
+{
+  "_comment": "Redirect to another host: the Node client uses redirect error and must not follow it (it would carry the Bearer away).",
+  "always": { "redirect": "http://example.invalid/v1/systemone" }
+}

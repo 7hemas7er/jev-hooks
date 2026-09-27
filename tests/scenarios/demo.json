@@ -1,0 +1,12 @@
+{
+  "_comment": "Answers of the fake server for the demo diffs (scripts/generate-demo.ts). Each rule applies if the state contains the given text; the other questions get the default values: noul 0.02, choice on the first option (none for choices with a value, nothing for primary_concern), score level 0. The rizzo-provisional profile does not transform noul, so the numbers are already the ones the verdict compares. adds_tests is sent as the choice \"how are tests missing?\" with none first: P(none) = 0.01 means tests missing at 0.99, i.e. adds_tests = 0.01. touches_auth 0.78 on the middleware is above the escalation threshold: uncertain.diff goes to Claude (policy v2).",
+  "rules": [
+    { "if_state_contains": "SIGNING_KEY", "answers": { "hardcoded_secret": 0.874 } },
+    { "if_state_contains": "README", "answers": { "adds_tests": {
+      "type": "choice", "choice": "code_without_test_file",
+      "probabilities": { "none": 0.01, "code_without_test_file": 0.99, "test_unrelated": 0, "fixtures_only": 0 },
+      "confidence": 0.9867
+    } } },
+    { "if_state_contains": "middleware", "answers": { "touches_auth": 0.78 } }
+  ]
+}

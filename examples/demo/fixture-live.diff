@@ -1,0 +1,8 @@
+diff --git a/tests/fixtures.py b/tests/fixtures.py
+new file mode 100644
+index 0000000..7a90c13
+--- /dev/null
++++ b/tests/fixtures.py
+@@ -0,0 +1,2 @@
++# copied from the dashboard to try it locally
++STRIPE_KEY = "<STRIPE_LIVE>"

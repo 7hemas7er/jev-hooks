@@ -1,0 +1,4 @@
+{
+  "_comment": "200 response without answers: the whole request fails.",
+  "always": { "no_answers": true }
+}

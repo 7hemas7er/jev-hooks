@@ -1,0 +1,11 @@
+diff --git a/src/middleware/session.py b/src/middleware/session.py
+index 1a2b3c4..5d6e7f8 100644
+--- a/src/middleware/session.py
++++ b/src/middleware/session.py
+@@ -10,4 +10,5 @@ def load_session(request):
+     cookie = request.cookies.get("session")
+     if cookie is None:
+         return None
+-    return Session.from_cookie(cookie)
++    session = Session.from_cookie(cookie)
++    return None if session.expired() else session

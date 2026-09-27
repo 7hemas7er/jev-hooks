@@ -1,0 +1,4 @@
+{
+  "_comment": "Proxy timeout after a wait, while the backend holds the lock: no retry.",
+  "always": { "delay_ms": 300, "http": 504, "body": "Gateway Timeout" }
+}

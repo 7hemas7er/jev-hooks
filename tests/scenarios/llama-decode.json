@@ -1,0 +1,4 @@
+{
+  "_comment": "ValueError from the rizzo-flow engine: 422 with a text detail. It is not a configuration error.",
+  "always": { "http": 422, "body": { "detail": "llama_decode returned 1: the context is full" } }
+}

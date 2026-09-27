@@ -1,0 +1,4 @@
+{
+  "_comment": "200 response that is not JSON: the whole request fails.",
+  "always": { "body": "not json" }
+}

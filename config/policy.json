@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "_comment": "Lanes are evaluated in order: the first one with a fired rule wins; the order of the array is also the order of severity. Thresholds apply to calibrated probabilities (see calibration.json). Policy v2 (2026-09-26): the model never blocks on its own. BLOCK and SECURITY REVIEW are reached only through the detectors' floors (detectors, which hold even with the backend down); the critical questions sit in NITS with \"action\": \"escalation\", that is, above the threshold they send the question to Claude, who rereads the listed files; the other NITS rules are notes in the context. Thresholds chosen on the p of the bench's dev set (bench/results/2026-09-26-dev-checks) to stay within about 3% false alarms, and checked on the holdout set (2026-09-26-holdout, diffs written afterwards): each one's numbers sit next to its rule (_why). To see the effect of a change on the bench: node scripts/simulate-policy.ts bench/results/2026-09-26-holdout.",
+  "lanes": [
+    { "name": "BLOCK", "exit_code": 3, "color": "red", "hook": "deny", "ci": "failure", "rules": [],
+      "_rules": "No model rule: BLOCK comes only from the detectors' floors (keys with a production prefix, private keys). If you want the model to block on its own, add a rule here in your own ~/.config/jev-hooks/policy.json." },
+    { "name": "SECURITY REVIEW", "exit_code": 2, "color": "yellow", "hook": "ask", "ci": "neutral", "rules": [],
+      "_rules": "No model rule: SECURITY REVIEW comes from the detectors' floors (text addressed to the reviewer, delimiters, bidirectional controls, reviewer rules). The lane stays for whoever wants a model rule in it, in the user file." },
+    { "name": "NITS", "exit_code": 1, "color": "dim_yellow", "hook": "warn", "ci": "success", "rules": [
+      { "check": "hardcoded_secret", "op": "gte", "value": 0.1, "action": "escalation",
+        "_why": "Noul, text unchanged. Threshold chosen on the dev set (bench/results/2026-09-26-dev-checks) to stay within 3% false alarms: TPR 0.78 (7/9), FPR 0.028 (3/109). Checked on the holdout set (2026-09-26-holdout, new diffs): TPR 0.91 (10/11), FPR 0.027 (3/110). The two positives missed on the dev set (p 0.007 and 0.058) and the one on the holdout set (0.059) sit below any useful threshold: the detectors catch them, and the floor blocks keys with a production prefix." },
+      { "check": "injection_risk",   "op": "gte", "value": 0.99, "action": "escalation",
+        "_why": "Choice c_scelta, 1 − P(none): negatives reach above 0.99, which is why the threshold is this high. Dev: TPR 1.00 (8/8), FPR 0.036 (4/110), with the four false alarms between 0.995 and 0.997 and the positives above 0.998: going higher would mean chasing the dev set. Holdout: TPR 0.83 (10/12, two positives missed at 0.960 and 0.989), FPR 0.064 (7/109)." },
+      { "check": "weakens_tests",    "op": "gte", "value": 0.2, "action": "escalation",
+        "_why": "Choice c_scelta, 1 − P(none). Dev: TPR 1.00 (9/9), FPR 0.028 (3/109). Holdout: TPR 1.00 (12/12), FPR 0.083 (9/109): the threshold with the most false alarms on the new set, six of the nine between 0.22 and 0.70, but no positive missed. The low threshold is deliberate: above it the question goes to Claude, who looks at the tests and does not block." },
+      { "check": "touches_auth",   "op": "gte", "value": 0.7, "action": "escalation",
+        "_why": "Noul, text unchanged. Dev: TPR 0.60 (6/10), FPR 0.028 (3/108); four positives sit between 0.03 and 0.42, below any threshold that stays within 3%. Holdout: TPR 0.71 (10/14), FPR 0.047 (5/107)." },
+      { "check": "breaks_api",     "op": "gte", "value": 0.9,
+        "_why": "Choice c_scelta, 1 − P(none). A note in NITS, never a block or an escalation. Dev: TPR 0.67 (8/12), FPR 0.019 (2/106). Holdout: TPR 0.81 (13/16), FPR 0.057 (6/105)." },
+      { "check": "data_migration", "op": "gte", "value": 0.2,
+        "_why": "Choice c_scelta, 1 − P(none). A note in NITS. Dev: TPR 1.00 (7/7), FPR 0.027 (3/111). Holdout: TPR 1.00 (10/10), FPR 0.072 (8/111)." },
+      { "check": "debug_leftovers",     "op": "gte", "value": 0.4,
+        "_why": "Noul a_letterale. A note in NITS. Dev: TPR 0.88 (7/8), FPR 0.027 (3/110). Holdout: TPR 0.91 (10/11), FPR 0.036 (4/110)." },
+      { "check": "adds_tests", "op": "lte", "value": 0.3,
+        "unless": { "check": "docs_only", "op": "gte", "value": 0.5 },
+        "_why": "Choice c_scelta sent as 'missing tests', reported as 1 − value: adds_tests ≤ 0.30 means missing tests with p ≥ 0.70. A note in NITS. Dev: TPR 0.74 (57/77), FPR 0.024 (1/41). Holdout: TPR 0.83 (50/60), FPR 0.066 (4/61). The same numbers with and without the unless on docs_only, which removes docs-only diffs: in both sets none of them crosses the threshold." } ],
+      "_description_matches": "description_matches is no longer in a rule: on the 2026-09-26 bench no wording goes above AUROC 0.662 (logit mean of two questions), and the checks.json text scores 0.426, worse than chance. It stays in checks.json as an informational question: its value is shown, the verdict does not depend on it." },
+    { "name": "MERGE", "exit_code": 0, "color": "green", "hook": "none", "ci": "success", "rules": [] }
+  ],
+  "band": { "delta_logit": 0.62, "_comment": "Escalation when |logit(p) − logit(threshold)| ≤ delta for a rule without an action on a critical check, chunk by chunk. Rules with \"action\": \"escalation\" have no band: their threshold is already chosen for few false alarms, and a band would add items below the threshold. In the plugin default every critical rule has the escalation, so the band applies to whoever moves a model rule back into a lane. 0.62 is the width of the old 0.35–0.65 band around 0.5." },
+  "escalation": { "hook": "deny_then_allow", "ci": "neutral", "max_files": 5, "ttl_min": 60,
+    "_hook": "What the commit hook does with an escalation. deny_then_allow: the first attempt denies with the prompt for Claude, who rereads the listed files; the second, with the same diff and the same items, goes through without asking the user (the lane decides) and leaves a line in the log. The go-ahead applies only to the model's escalations (reason threshold or band): if the items include a detector (CI workflow, invisible characters, text addressed to the reviewer), a file the model did not see (minified, generated, binary, omitted) or a detector the model contradicts, the user decides on the second attempt. deny_then_ask: the second attempt always asks the user. context: no deny, the escalation only goes into Claude's context. The project can only tighten (context < deny_then_allow < deny_then_ask). BLOCK floors always deny." },
+  "ci": {
+    "backend_unavailable": "neutral",
+    "untrusted_input": "failure",
+    "_comment": "neutral does not block the merge even with a required check: it applies only to a backend that is down, unreachable or not configured. Everything the author of a PR controls gives untrusted_input."
+  },
+  "partial_coverage": { "min_lane": "NITS" },
+  "state": {
+    "chars_per_token": 3,
+    "tokens_per_state": 2000,
+    "max_line_chars": 2000,
+    "max_diff_bytes": 4000000,
+    "max_description_chars": 2000,
+    "ignore": [
+      "(^|/)(package-lock\\.json|npm-shrinkwrap\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|poetry\\.lock|Pipfile\\.lock|Cargo\\.lock|go\\.sum|Gemfile\\.lock)$",
+      "\\.min\\.(js|css)$", "\\.map$", "\\.snap$",
+      "^(dist|build|vendor|node_modules)/"
+    ],
+    "ignore_without_escalation": [
+      "(^|/)(package-lock\\.json|npm-shrinkwrap\\.json|yarn\\.lock|pnpm-lock\\.yaml|composer\\.lock|poetry\\.lock|Pipfile\\.lock|Cargo\\.lock|go\\.sum|Gemfile\\.lock)$",
+      "\\.map$", "\\.snap$",
+      "\\.(png|jpe?g|gif|webp|ico)$"
+    ],
+    "sensitive_files": [
+      "(^|/)\\.env(\\.[^/]*)?$", "\\.(pem|key|p12|pfx|jks|keystore)$",
+      "(^|/)(credentials|secrets?)(\\.(json|ya?ml|toml|ini|env|txt))?$", "(^|/)\\.(npmrc|pypirc|netrc)$"
+    ]
+  },
+  "test_paths": [
+    "(^|/)(tests?|spec|specs|__tests__|fixtures?|testdata)/",
+    "(^|/)conftest\\.py$", "\\.(test|spec)\\.[cm]?[jt]sx?$", "(^|/)test_[^/]*\\.py$", "_test\\.(go|py)$"
+  ],
+  "limits": {
+    "_comment": "total_ms counts from the start of the hook, git commands included. For hook and skill, validation requires total_ms ≤ the hooks.json timeout (180 s) − 20 s.",
+    "hook":   { "max_chunks": 8,  "total_ms": 120000 },
+    "skill":  { "max_chunks": 12, "total_ms": 150000 },
+    "cli":    { "max_chunks": 24, "total_ms": 300000 },
+    "action": { "max_chunks": 40, "total_ms": 600000 }
+  },
+  "network": {
+    "timeout_ms": 60000,
+    "connect_attempts": 3,
+    "overload_attempts": 2,
+    "backoff_ms": 1000,
+    "max_retry_after_ms": 10000,
+    "overflow_resplits": 2,
+    "parallel_rizzo": 1,
+    "parallel_other": 4
+  },
+  "detectors": [
+    { "name": "private_key", "label": "Private key", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "-----BEGIN (RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY( BLOCK)?-----",
+      "exclude_paths": "test_paths", "floor": "BLOCK", "escalate": "if_model_disagrees" },
+    { "name": "aws_access_key", "label": "AWS key", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\b(AKIA|ASIA)[0-9A-Z]{16}\\b", "min_entropy": 3.0, "ignore_values": "(?:EXAMPLE|example)",
+      "floor": "BLOCK", "escalate": "if_model_disagrees" },
+    { "name": "stripe_live", "label": "Stripe live key", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\b[rs]k_live_[0-9A-Za-z]{20,}\\b", "min_entropy": 3.5,
+      "floor": "BLOCK", "escalate": "if_model_disagrees" },
+    { "name": "github_token", "label": "GitHub token", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})\\b", "min_entropy": 3.5,
+      "floor": "BLOCK", "escalate": "if_model_disagrees" },
+    { "name": "slack_token", "label": "Slack token", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\bxox[baprs]-[0-9A-Za-z-]{10,}\\b", "min_entropy": 3.0,
+      "floor": "BLOCK", "escalate": "if_model_disagrees" },
+    { "name": "secret_assignment", "label": "High-entropy value assigned to a secret-like name", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\b[A-Za-z0-9_]*(secret|token|passw(or)?d|api[_-]?key|private[_-]?key|signing[_-]?key|access[_-]?key)[A-Za-z0-9_]*[\"']?\\s*(:=|=>|[:=])\\s*[\"']?[^\"'\\s,;]{16,}", "flags": "i",
+      "min_entropy": 3.5, "ignore_values": "(?:example|changeme|your[-_]|placeholder|dummy|fake|x{6,}|<[^>]+>|os\\.environ|getenv|process\\.env|settings\\.|config\\.|ENV\\[|\\$\\{)",
+      "exclude_paths": "test_paths", "floor": null, "escalate": "if_model_disagrees" },
+    { "name": "url_with_credentials", "label": "URL with user and password", "check": "hardcoded_secret", "where": ["added_lines"],
+      "regex": "\\b[a-z][a-z0-9+.-]{1,20}://[^\\s/:@]{1,64}:([^\\s@/]{8,})@", "flags": "i",
+      "min_entropy": 3.0, "ignore_values": "(?:example|changeme|password@|pass@|secret@|<[^>]+>|\\$\\{)",
+      "exclude_paths": "test_paths", "floor": null, "escalate": "if_model_disagrees" },
+    { "name": "reviewer_instructions", "label": "Text addressed to the reviewer", "where": ["added_lines", "title", "description"],
+      "regex": "(ignore|disregard) (all |any |the )?(previous|prior|above|earlier) (instructions|rules)|ignora (tutte )?le istruzioni|(answer|respond|reply|rispondi)( with)? [\"'`]?(no|false|0|merge)[\"'`]?\\b|this (diff|change|code|file) is (safe|clean|approved)[^\\n]{0,40}(merge|approve)",
+      "flags": "i", "floor": "SECURITY REVIEW", "escalate": "always" },
+    { "name": "evidence_delimiter", "label": "Prompt delimiter in the text", "where": ["added_lines", "title", "description"],
+      "regex": "</?\\s*evidence\\s*>|<\\|im_(start|end)\\|>|</?system>", "flags": "i", "floor": "SECURITY REVIEW", "escalate": "always" },
+    { "name": "bidi_controls", "label": "Bidirectional control characters", "where": ["added_lines"],
+      "regex": "[\\u202A-\\u202E\\u2066-\\u2069]", "floor": "SECURITY REVIEW", "escalate": "always" },
+    { "name": "zero_width", "label": "Zero-width characters", "where": ["added_lines"],
+      "regex": "[\\u200B-\\u200D\\u2060]", "floor": null, "escalate": "always" },
+    { "name": "reviewer_rules", "label": "Change to the reviewer rules", "where": ["paths"],
+      "regex": "(^|/)\\.jev-hooks/", "floor": "SECURITY REVIEW", "escalate": "always" },
+    { "name": "ci_workflow", "label": "Change to the CI workflows", "where": ["paths"],
+      "regex": "^\\.github/workflows/", "floor": null, "escalate": "always" }
+  ],
+  "hook": { "enabled": true, "on_error": "warn", "cache_ttl_min": 1440 },
+  "colors": { "high": 0.7, "mid": 0.35 }
+}

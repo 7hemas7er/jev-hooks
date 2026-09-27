@@ -1,0 +1,4 @@
+{
+  "_comment": "Black hole: the connection opens but the response never arrives (unlike a server that is off, which gives ECONNREFUSED at once).",
+  "always": { "black_hole": true }
+}

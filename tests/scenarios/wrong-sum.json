@@ -1,0 +1,4 @@
+{
+  "_comment": "Choice and score probabilities that sum to 0.9, outside the 0.02 tolerance: those answers are discarded.",
+  "always": { "sum": 0.9 }
+}

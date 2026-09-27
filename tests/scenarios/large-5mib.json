@@ -1,0 +1,4 @@
+{
+  "_comment": "Response of more than 5 MiB: the transport rejects it past the 4 MiB cap.",
+  "always": { "mib": 5 }
+}

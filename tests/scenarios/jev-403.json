@@ -1,0 +1,4 @@
+{
+  "_comment": "Live Jev answered 403 to a request without a key (the documentation says 401): the client treats them the same way.",
+  "always": { "http": 403, "body": { "detail": "Not authenticated" } }
+}

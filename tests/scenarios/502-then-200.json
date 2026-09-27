@@ -1,0 +1,4 @@
+{
+  "_comment": "The proxy fails to reach the backend once (502), then the request succeeds: a single retry.",
+  "sequence": [ { "http": 502, "body": "Bad Gateway" } ]
+}

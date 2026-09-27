@@ -1,0 +1,4 @@
+{
+  "_comment": "A single malformed answer among the others: only that question is discarded.",
+  "always": { "malformed": { "touches_auth": { "type": "noul", "noul": "high" } } }
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "The backend changes halfway through the review: the first request has fake-fp-1, from the second on fake-fp-2. The sequence's fields win over those of always.",
+  "sequence": [ { "fingerprint": "fake-fp-1" } ],
+  "always": { "fingerprint": "fake-fp-2" }
+}

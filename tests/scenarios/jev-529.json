@@ -1,0 +1,4 @@
+{
+  "_comment": "Overloaded without Retry-After: the first request gets 529, the second succeeds.",
+  "sequence": [ { "http": 529, "body": { "detail": "Overloaded" } } ]
+}
