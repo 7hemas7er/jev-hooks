@@ -984,8 +984,12 @@ not fire on its own repository and GitHub's push protection stays quiet.
   checked the `claude-fable-5-1` id and a prompt typed in the interactive composer.
   On 2.1.284 a copy with a broken module (`on('turn.stepX', …)`) was refused at load
   ("hooks module … failed to load" in the debug log) while the commit hook of the same
-  plugin still fired and denied a commit. Not verified yet: a stored sensitive key
-  reaching `options`, and Esc during the wait.
+  plugin still fired and denied a commit. Esc pressed while the router waited for a
+  slow backend (a staged copy with `timeout_ms` raised to 8 s, the backend answering
+  in 6 s) ended the wait at once: `prompt.submit` settled 30 ms after the cancel, the
+  classification's request never completed, the composer got the prompt back, and the
+  next prompt was classified and routed as usual, with no rest period. Not verified
+  yet: a stored sensitive key reaching `options`.
 - **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
   is active. The cache guard notices a cleared cache only after the fact: two turns
   that each paid for the whole context again.
