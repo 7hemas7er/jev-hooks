@@ -3,6 +3,21 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+### Added
+
+- `docs/spark.md`: rizzo-flow on a DGX Spark, step by step, with
+  `examples/spark/Caddyfile`, a proxy that lets through only `POST /v1/systemone` and
+  `GET /v1/models` with the token. The file passes `caddy validate` (a test runs it when
+  Caddy is installed) and was exercised on loopback against a fake backend.
+- `docs/security.md` (the threat model, and private reporting through GitHub) and
+  `docs/evaluation.md` (how questions, thresholds and calibration are measured, and
+  what is still missing).
+- A weekly CI job that installs the pinned and the latest Claude Code, validates the
+  plugin and runs `tests-cc/` in its test kit, opening an issue when one fails; and a
+  type-check of the core with TypeScript 7.
+
 ## 0.4.0 — 2026-09-28
 
 The review moves into CI too, as a check run a fork cannot steer.

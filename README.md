@@ -204,8 +204,10 @@ rizzo serve --host 127.0.0.1 --port 8017 --quant bf16 --device cuda
 ```
 
 Then set `review_url` to your proxy, for example `http://192.168.1.50:8017` on the LAN
-or `http://100.64.0.10:8017` over Tailscale. A step-by-step Spark guide (systemd units
-and a proxy configuration) is planned as `docs/spark.md`.
+or `http://100.64.0.10:8017` over Tailscale. [docs/spark.md](docs/spark.md) is a
+step-by-step guide for a DGX Spark: a systemd unit, a checked proxy configuration
+([`examples/spark/Caddyfile`](examples/spark/Caddyfile)), a real-decision test and the
+tailnet setup for GitHub Actions.
 
 ### TypeSafe Jev, with your own key
 
@@ -762,7 +764,8 @@ every classification, so the thresholds can be tuned on your own prompts, in you
 
 Before choosing a threshold you need to know whether a question separates at all.
 `bench/` holds hand-labelled synthetic diffs and the scripts that measure them
-(`bench/README.md`, `bench/MEASUREMENT.md`):
+(`bench/README.md`, `bench/MEASUREMENT.md`; the method, and the calibration still to
+do, in [docs/evaluation.md](docs/evaluation.md)):
 
 - **dev set**: 118 diffs, used to compare 44 wordings of the questions and to choose
   thresholds;
@@ -832,7 +835,8 @@ you that the thresholds no longer apply to that question until you measure again
 
 jev-hooks reads text written by others (diffs, commit messages, pull request
 descriptions) and runs outside Claude's sandbox. It is built on the assumption that
-some of that text is hostile.
+some of that text is hostile. [docs/security.md](docs/security.md) has the full threat
+model and how to report a vulnerability privately.
 
 **Trust levels.** Plugin defaults and your user config are trusted: Claude cannot write
 to `~/.config` from its sandbox. The project's `.jev-hooks/` is not, and can only
