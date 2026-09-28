@@ -58,9 +58,15 @@ export function backendSources(origin: Origin, env: NodeJS.ProcessEnv, o: { expl
 
 // resolveBackend's messages point to /plugin (userConfig), which applies to the hook
 // and the skill; from the CLI the configuration comes from the environment, the key
-// file or --url.
+// file or --url, and in the Action from its inputs.
 function forEntry(e: Failure, origin: Origin | undefined): Failure {
-  if (origin !== 'cli' || e.kind !== 'not_configured') return e
+  if (e.kind !== 'not_configured') return e
+  if (origin === 'action') {
+    return e.message.startsWith('backend not configured')
+      ? { ...e, message: 'backend not configured: set the url input (for example from vars.JEV_URL)' }
+      : { ...e, message: e.message.replace('set api_key with /plugin', 'set the api-key input from a secret') }
+  }
+  if (origin !== 'cli') return e
   if (e.message.startsWith('backend not configured')) {
     return { ...e, message: 'backend not configured: set JEV_HOOKS_URL (or TYPESAFE_API_KEY for Jev), or use --url' }
   }

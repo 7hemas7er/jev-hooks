@@ -1,0 +1,20 @@
+name: jev-review
+description: Reviews a pull request's diff with a /v1/systemone backend (Jev or rizzo-flow); policy.json computes the verdict
+author: 7hemas7er
+branding: { icon: check-circle, color: blue }
+inputs:
+  mode:         { description: "workflow_run (the second phase of examples/workflows/) or file (reviews diff-file, no GitHub API)", required: false, default: "workflow_run" }
+  input-dir:    { description: "Directory of the first phase's downloaded artifact (pr.json, diff.patch)", required: false, default: "" }
+  url:          { description: "Base URL of the /v1/systemone backend. Empty: only the detectors run, and without a floor the check is neutral", required: false, default: "" }
+  api-key:      { description: "Bearer key for the backend: always from a secret", required: false, default: "" }
+  model:        { description: "Requested model", required: false, default: "jev-latest" }
+  github-token: { description: "Token to read the pull request and the diff, and to create the check run when checks-token is empty", required: false, default: "" }
+  checks-token: { description: "Optional: a token of a dedicated GitHub App to create the check run, so that a required check cannot be imitated by a workflow in a fork", required: false, default: "" }
+  diff-file:    { description: "Mode file only: the diff to review", required: false, default: "" }
+outputs:
+  verdict:    { description: "BLOCK, SECURITY REVIEW, NITS, MERGE, or ERROR" }
+  conclusion: { description: "The check run's conclusion: success, neutral or failure" }
+  escalation: { description: "Ids of the checks in escalation, comma separated" }
+runs:
+  using: node24
+  main: action/entry.mjs
