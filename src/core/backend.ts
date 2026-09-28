@@ -4,8 +4,10 @@
 // review_url to the Spark without api_key, and has TYPESAFE_API_KEY exported for the
 // SDKs, would send the TypeSafe key in plain text over the LAN.
 //
-// The URL parsing is hand-written because URL does not exist in the router's node:vm
-// context. It is stricter than the WHATWG parser fetch will use: anything the two
+// The URL parsing is hand-written because the core uses no URL (rule 4): Claude Code
+// 2.1.283 declares URL in the hooks' environment and 2.1.282 did not, so without it the
+// core runs the same in Node, in older builds and in the stricter context the tests
+// build. It is stricter than the WHATWG parser fetch will use: anything the two
 // might read differently (backslashes, IPv4 in octal or hex, credentials, queries,
 // non-ASCII hosts) is rejected, so the host the http guard judges "local" is
 // necessarily the one fetch will contact.
@@ -337,6 +339,14 @@ export function resolveBackend(f: BackendSources): Result<Backend & { layer: str
     host: authority(u.value),
     layer: selection.layer,
   })
+}
+
+// The key in the key file (~/.config/jev-hooks/key): its first non-empty line,
+// trimmed. It lives in the core because the reviewer reads the file with node:fs and
+// the router with $.fs.read, and both must take the same line from it.
+export function keyFromFileText(text: string | null | undefined): string | undefined {
+  if (typeof text !== 'string') return undefined
+  return text.split(/\r?\n/).map((r) => r.trim()).find((r) => r !== '')
 }
 
 // The key goes only here, never in the URL, the logs or the messages.

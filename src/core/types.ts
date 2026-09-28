@@ -44,6 +44,16 @@ export type QuestionType = 'noul' | 'choice' | 'score'
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export const EFFORT_SCALE = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 
+// Who submitted a prompt: the kinds of Claude Code 2.1.283's `PromptOrigin`, in the
+// order the declaration lists them. There is no "human": the user's own Enter is
+// composer, and bridge is the user's message from Remote Control. A closed list,
+// so a router.json that names a kind the engine never sends (an earlier draft had
+// "human") is an error instead of a router that silently skips every prompt.
+export const PROMPT_ORIGIN_KINDS = [
+  'composer', 'bridge', 'sdk', 'task-notification', 'scheduled-trigger', 'peer', 'peer-send-message', 'projects-relay',
+  'channel', 'coordinator', 'observer', 'observer-activity', 'auto-continuation', 'unclassified', 'slack-ping', 'plugin',
+] as const
+
 // Limits shared by Jev and rizzo-flow, that is the intersection of the two. They
 // live here and not in systemone.ts because the JSON validation (config.ts) uses them
 // too, and it must reject a non-portable question before it reaches a backend;
@@ -261,6 +271,13 @@ export type EffortStep = number | Effort
 // of the two.
 export interface RouterCondition { question: string; p_gte?: number; level_gte?: number }
 
+// When the cache guard judges a step (router.ts, cacheGuard): only after an effort
+// change, on a prefix of at least min_prefix_tokens, when this turn started at most
+// max_gap_ms after the start of the turn that made the previous request. A cache read
+// below max_read_ratio of that prefix is a suspect; trips suspects in a row turn the
+// router off for the session.
+export interface CacheGuard { min_prefix_tokens: number; max_read_ratio: number; max_gap_ms: number; trips: number }
+
 export interface RouterConfig {
   enabled: boolean
   timeout_ms: number
@@ -275,6 +292,7 @@ export interface RouterConfig {
   respect_session_effort: boolean
   assume_session_effort: Effort | null
   min_top_probability: number
+  cache_guard: CacheGuard | null         // null: no guard
   base: Record<string, EffortStep | 'previous'>          // keys = options of the task-kind question
   adjust: { if: RouterCondition; raise?: number; at_least?: Effort }[]   // exactly one of raise and at_least
   explicit_depth: { question: string; min_probability: number; map: Record<string, EffortStep | null> } | null
@@ -524,18 +542,45 @@ export interface CommitIntent {
 
 // ─── Router (router.ts) ───────────────────────────────────────────────────────
 
+// A prompt's answers, calibrated, by question type. A score keeps its argmax level
+// and not the calibrated Σ k·p'_k, which moves with the temperature: level_gte
+// compares levels. missing lists what was asked and not answered, so that a rule on
+// a missing answer is not silently skipped (chooseEffort).
 export interface Classification {
-  taskKind: string
-  pTask: number
-  scopeLevel: number
-  p: Record<string, number>               // calibrated nouls
-  depth: string
-  pDepth: number
-  profile: string
-  calibrated: boolean
+  taskQuestion: string                     // id of the task-kind question (RouterConfig.taskQuestion)
+  taskKind: string                         // argmax option of the task-kind question
+  pTask: number                            // its calibrated probability
+  p: Record<string, number>                // calibrated P(yes) per noul id
+  levels: Record<string, number>           // argmax level per score id (ties → the higher level)
+  choices: Record<string, { option: string; p: number }>   // argmax option and its calibrated p, per choice id
+  missing: string[]                        // asked but not answered (discarded or absent), sorted
+  profile: string                          // calibration profile name
+  calibrated: boolean                      // profile.calibrated && client-side mode
 }
 
 export interface RouterBackend extends Backend {}
+
+// turn.step's effort: a level, or a number that is an internal token budget. A hook
+// may pass a number through but never set one (the engine skips the hook).
+export type SessionEffort = Effort | number
+
+// previous: the effort the router gave the last turn, for base "previous".
+export interface RouterContext { model: string; effort?: SessionEffort; previous?: Effort }
+
+// effort only when it differs from the session's: absent means leave the turn alone.
+export interface EffortChoice { effort?: Effort; reason: string }
+
+// problem: a skip the user must hear about (the guardrail mask map), not one that is
+// part of the design (an origin, a prefix, an empty prompt).
+export type RouterRequest =
+  | { skip: string; problem?: true }
+  | { url: string; init: { method: 'POST'; headers: Record<string, string>; body: string }; redactions: number }
+
+// Cache guard (router.ts, cacheGuard): the usage of a main-loop step as the API
+// reported it, the step, and the guard's state across the session.
+export interface StepUsage { input_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }
+export interface GuardStep { effort?: SessionEffort; usage: StepUsage | null; messageCount: number; model: string }
+export interface GuardState { last: GuardStep | null; suspects: number; tripped: boolean }
 
 // ─── Node adapters (src/node) ─────────────────────────────────────────────────
 

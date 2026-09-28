@@ -13,8 +13,10 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
+import { keyFromFileText } from '../core/backend.ts'
 import { composeConfig } from '../core/config.ts'
 import { parseMaskMap } from '../core/mask.ts'
+import { userConfigDir as configHome } from '../core/router.ts'
 import type { ReviewConfig, MaskPair, Failure, Result, ConfigFile, ConfigLayers, Origin, Problem } from '../core/types.ts'
 import { errResult } from '../core/types.ts'
 import { changedFromHead, localDrivers, fileAtHead, repoRoot } from './git.ts'
@@ -59,8 +61,10 @@ function xdg(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
   return v !== undefined && v !== '' && isAbsolute(v) ? v : join(homeDir(env), fallback)
 }
 
+// The router looks up the same directory through $.fs, with the same rule (on the
+// platforms the plugin supports, "absolute" is "starts with /").
 export function userConfigDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(xdg(env, 'XDG_CONFIG_HOME', '.config'), 'jev-hooks')
+  return join(configHome(env.XDG_CONFIG_HOME, homeDir(env)) ?? '.config', 'jev-hooks')
 }
 
 export function xdgStateDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -138,7 +142,7 @@ export function readKeyFile(env: NodeJS.ProcessEnv = process.env): { key?: strin
   const parsed = readFile(path, true, KEY_CAP)
   const where = displayPath(path, env)
   if (!parsed.ok) return { warning: `key file ${where} ${parsed.error.message}` }
-  const line = (parsed.value ?? '').split(/\r?\n/).map((r) => r.trim()).find((r) => r !== '')
+  const line = keyFromFileText(parsed.value)
   const out: { key?: string; warning?: string } = {}
   if (line !== undefined) out.key = line
   if ((mode & 0o077) !== 0) out.warning = `key file ${where} readable by other users: chmod 600`

@@ -155,7 +155,9 @@ function levelsOf(keys: string[], w: WireQuestion): number[] {
   return keys.map((_, i) => i)
 }
 
-function argmax(prob: Record<string, number>, preferred: string): string {
+// The option with the highest probability. The router takes it from here too: a
+// backend's `choice` is only a claim, and only a temperature recomputes it.
+export function argmax(prob: Record<string, number>, preferred: string): string {
   let best = ''
   let max = -1
   for (const [k, p] of Object.entries(prob)) {

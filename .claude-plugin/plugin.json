@@ -1,15 +1,18 @@
 {
   "name": "jev-hooks",
   "version": "0.1.1",
-  "description": "Commit reviewer with typed questions (Jev or rizzo-flow): commit hook and jev-review CLI",
+  "description": "Commit reviewer and per-turn effort router with typed questions (Jev or rizzo-flow): commit hook, jev-review CLI and a function hook",
   "author": { "name": "7hemas7er" },
   "homepage": "https://github.com/7hemas7er/jev-hooks",
   "license": "MIT",
-  "keywords": ["jev", "code-review", "hooks", "security"],
+  "keywords": ["jev", "code-review", "hooks", "security", "function-hooks", "effort"],
   "userConfig": {
     "review_url":       { "type": "string",  "title": "Reviewer URL", "description": "Base URL of the /v1/systemone backend (e.g. http://192.168.1.50:8017). Empty: reviewer off", "default": "" },
+    "router_url":       { "type": "string",  "title": "Router URL", "description": "Base URL of the /v1/systemone backend for the effort router (e.g. http://192.168.1.50:8019). Empty: uses review_url", "default": "" },
     "api_key":          { "type": "string",  "title": "API key", "description": "Bearer for the backend (TypeSafe, or rizzo with RIZZO_API_KEY)", "default": "", "sensitive": true },
+    "router_api_key":   { "type": "string",  "title": "Router API key", "description": "Bearer for router_url. Empty: api_key or the key file, only when router_url is on review_url's host", "default": "", "sensitive": true },
     "model":            { "type": "string",  "title": "Model", "description": "jev-latest also works with rizzo-flow", "default": "jev-latest" },
-    "commit_review":    { "type": "boolean", "title": "Review before commit", "description": "Reviews the diff when Claude runs git commit", "default": true }
+    "commit_review":    { "type": "boolean", "title": "Review before commit", "description": "Reviews the diff when Claude runs git commit", "default": true },
+    "effort_router":    { "type": "boolean", "title": "Effort router", "description": "Opt-in. Lowers the per-turn effort from what your prompt asks. Needs CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1, Opus 5.5 or Fable 5.1 and the per-turn-control beta on the account: without the beta every effort change clears the prompt cache", "default": false }
   }
 }

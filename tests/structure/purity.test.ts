@@ -1,9 +1,13 @@
-// Rule 4 of AGENTS.md: src/core/** and the planned hooks/register.ts will run in the
-// node:vm context of Claude Code's module loader, created by Object.create(null). URL,
-// TextEncoder, fetch, process… are missing there, and a forbidden name does not show at
-// load time: it blows up at runtime with a ReferenceError, inside a try/catch that hides
-// it, and the router stays silent on every turn. This test catches it in the source.
-// It also checks rule 3: relative imports with the .ts extension written out.
+// Rule 4 of AGENTS.md: src/core/** and hooks/register.ts run in the environment of
+// Claude Code's module loader. In 2.1.282 that was a node:vm context created by
+// Object.create(null), where URL, TextEncoder, fetch, process… are missing. 2.1.283
+// declares URL, TextEncoder, AbortController, crypto… there and 2.1.282 did not; the core
+// relies on none of them, so it runs the same in Node, in older builds and in the
+// stricter context vm-pure.test.ts builds. A missing name does not show at load time: it
+// blows up at runtime with a ReferenceError, inside a try/catch that hides it, and the
+// router stays silent on every turn. This test catches the forbidden names in the source.
+// It also checks rule 3: relative imports with the .ts extension written out, tests-cc/
+// included (only `claude plugin test` runs it, through scripts/test-cc.ts).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -128,7 +132,7 @@ test('src/core imports only src/core files, register.ts only the repo and the cl
 
 test('relative imports carry the .ts extension (rule 3)', () => {
   const errors: string[] = []
-  const all = ['src', 'hooks', 'scripts', 'tests'].flatMap((c) => tsFiles(join(root, c)))
+  const all = ['src', 'hooks', 'scripts', 'tests', 'tests-cc'].flatMap((c) => tsFiles(join(root, c)))
   for (const f of all) {
     for (const imp of importsOf(readFileSync(f, 'utf8'))) {
       const relative = imp.specifier.startsWith('./') || imp.specifier.startsWith('../')

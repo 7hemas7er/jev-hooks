@@ -1,11 +1,15 @@
-// Rule 4 put to the test. Claude Code's module loader runs register.ts and
-// everything it imports in a node:vm context created by Object.create(null), with
-// codeGeneration {strings: false, wasm: false}, only setTimeout and console added, some
-// globals deleted and the intrinsics frozen. There a new URL() or a TextEncoder does not
-// fail at load time: it gives a ReferenceError at the first call, inside a try/catch
-// that hides it. purity.test.ts looks for the forbidden names in the source; this test
-// really runs the pure functions in an identical context and fails at the first
-// ReferenceError.
+// Rule 4 put to the test. Claude Code's module loader runs hooks/register.ts and
+// everything it imports in an environment of its own. In 2.1.282 that was a node:vm
+// context created by Object.create(null), with codeGeneration {strings: false, wasm:
+// false}, only setTimeout and console added, some globals deleted and the intrinsics
+// frozen. 2.1.283 declares URL, TextEncoder, AbortController, crypto… there as well;
+// the context here stays the strict one of 2.1.282 on purpose: rule 4 is stricter than
+// the environment, and the core relies on none of those names, so it runs the same in
+// Node, in older builds and here. In such a context a new URL() or a TextEncoder does
+// not fail at load time: it gives a ReferenceError at the first call, inside a
+// try/catch that hides it. purity.test.ts looks for the forbidden names in the source;
+// this test really runs the pure functions in the strict context and fails at the
+// first ReferenceError.
 //
 // The modules are loaded like this: types stripped with module.stripTypeScriptTypes,
 // then every file becomes a function that receives the exports of the files it imports
@@ -13,10 +17,12 @@
 // and run in the context. Every value passed to the functions is born inside the
 // context.
 //
-// For now there are sha256Hex, validateBody, URL parsing and the other
-// modules of the router graph that already exist: calibration, chunk state, redaction,
-// masking and PRNG. The router's functions (effectiveConfig, backendRouter,
-// prepareRequest, parseResponse, chooseEffort) are added when router.ts exists.
+// What runs here, each result compared with Node's: sha256Hex, validateBody, URL
+// parsing, the modules of the router's graph (calibration, chunk state, redaction,
+// masking, PRNG) and router.ts itself (effectiveRouterConfig, routerBackend,
+// prepareRequest, parseClassification, chooseEffort, cacheGuard, fetchFailure and the lines). Then
+// hooks/register.ts, loaded in the same context and driven with a `$` written as source
+// inside it: from prompt.submit to the fetch, and to the effort of the turn's first step.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -33,8 +39,12 @@ import * as randomHost from '../../src/core/random.ts'
 import { validateCalibration, validateChecks, validatePolicy } from '../../src/core/config.ts'
 import * as maskHost from '../../src/core/mask.ts'
 import * as redactionHost from '../../src/core/redaction.ts'
+import * as routerHost from '../../src/core/router.ts'
 import * as stateHost from '../../src/core/state.ts'
-import type { Calibration, Checks, WireQuestion, FileDiff, Identity, Policy, Answer } from '../../src/core/types.ts'
+import type {
+  Calibration, Checks, WireQuestion, FileDiff, Identity, Policy, Answer, GuardState, RouterBackend, RouterConfig,
+} from '../../src/core/types.ts'
+import { generator, highEntropyValue } from '../helpers/fake-secrets.ts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const rel = (p: string): string => relative(root, p).split(sep).join('/')
@@ -148,9 +158,9 @@ function graph(entries: string[], read: Reader): Module[] {
   return order
 }
 
-// The context of Claude Code's loader: a null global, no code generation from
-// strings, setTimeout and console as the only additions, globals deleted and intrinsics
-// frozen.
+// The context of Claude Code 2.1.282's loader, kept on purpose (see the header): a
+// null global, no code generation from strings, setTimeout and console as the only
+// additions, globals deleted and intrinsics frozen.
 function emptyContext(): vm.Context {
   const ctx = vm.createContext(Object.create(null), { codeGeneration: { strings: false, wasm: false } })
   vm.runInContext(`
@@ -178,7 +188,7 @@ function load(entries: string[], read: Reader = readFromDisk): { ctx: vm.Context
   return { ctx, modules: registry, order: modules.map((m) => m.id) }
 }
 
-// A value built inside the context, as the router would build it.
+// A value built inside the context, as the router builds it.
 const inside = (ctx: vm.Context, v: unknown): unknown => vm.runInContext(`(${JSON.stringify(v)})`, ctx)
 // A result of the context brought back into Node's realm, to compare it.
 const outside = (v: unknown): unknown => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
@@ -304,13 +314,13 @@ test('classifyStatus and parseResponse in the vm context as in Node', () => {
 
 const routerGraph = load([
   join(CORE, 'config.ts'), join(CORE, 'calibration.ts'), join(CORE, 'state.ts'), join(CORE, 'redaction.ts'),
-  join(CORE, 'mask.ts'), join(CORE, 'random.ts'),
+  join(CORE, 'mask.ts'), join(CORE, 'random.ts'), join(CORE, 'router.ts'),
 ])
 const vmR = (name: string): Functions => routerGraph.modules[`src/core/${name}.ts`]
 const jsonOf = (rel: string): unknown => JSON.parse(readFileSync(join(root, rel), 'utf8'))
 
 // The configuration is validated inside the context: the RegExps must be born there,
-// like those the router will build from the generated defaults.
+// like those the router builds from the generated defaults.
 function vmConfig(): { checks: unknown; policy: unknown; calibration: unknown } {
   const ok = (e: unknown): unknown => {
     const x = e as { ok: boolean; value?: unknown; error?: { message: string } }
@@ -333,10 +343,11 @@ function hostConfig(): { checks: Checks; policy: Policy; calibration: Calibratio
   return { checks: c.value, policy: p.value, calibration: k.value }
 }
 
-test('the graph of calibration, state, redaction, mask and random stays among the modules the router may import', () => {
+test('router.ts and its graph stay among the modules the router may import', () => {
   // the router imports only these files (no diff.ts, chunks.ts, review.ts)
   const allowed = new Set(['router', 'backend', 'systemone', 'calibration', 'state', 'redaction', 'mask', 'random', 'numbers',
     'json', 'config', 'utf8', 'sha256', 'canonical', 'types', 'defaults'].map((n) => `src/core/${n}.ts`))
+  assert.ok(routerGraph.order.includes('src/core/router.ts'))
   for (const id of routerGraph.order) assert.ok(allowed.has(id), `${id} is not among the modules the router may import`)
 })
 
@@ -404,4 +415,262 @@ test('chunkState, globalState, chooseProfile and calibrate in the vm context as 
     const inVm = vmR('calibration').calibrate('test', inside(routerGraph.ctx, questions[k]), inside(routerGraph.ctx, r), sVm)
     assert.deepEqual(outside(inVm), outside(calibrationHost.calibrate('test', questions[k], r, sHost)))
   })
+})
+
+// ─── router.ts ────────────────────────────────────────────────────────────────
+
+const vmRouter = vmR('router')
+const OPUS = 'claude-opus-5-5'
+const NO_FILES = { user: null, projects: [], userCalibration: null }
+const project1 = (text: string): { label: string; text: string }[] => [{ label: '.jev-hooks/router.json', text }]
+const REMOTE_OPTIONS = { effort_router: true, review_url: 'https://rizzo.example.com', api_key: 'fake-router-key', model: 'jev-latest' }
+const LOCAL_OPTIONS = { effort_router: true, review_url: 'http://192.168.1.50:8017', model: 'jev-latest' }
+
+// The router's configuration and a backend, built in each realm from the same input:
+// the RegExps and every object the functions receive are born in their own realm.
+function routerIn(options: Record<string, unknown>): { vm: { cfg: unknown; b: unknown }; host: { cfg: RouterConfig; b: RouterBackend } } {
+  const cfg = (vmRouter.effectiveRouterConfig(inside(routerGraph.ctx, NO_FILES), inside(routerGraph.ctx, options)) as { cfg: unknown }).cfg
+  const b = (vmRouter.routerBackend(inside(routerGraph.ctx, options), inside(routerGraph.ctx, {})) as { value: unknown }).value
+  const hostCfg = routerHost.effectiveRouterConfig(NO_FILES, options).cfg
+  const hostB = routerHost.routerBackend(options, {})
+  if (!hostCfg || !hostB.ok) assert.fail('the plugin router configuration or the backend is invalid')
+  return { vm: { cfg, b }, host: { cfg: hostCfg, b: hostB.value } }
+}
+
+// A rizzo-like answer to the router's seven questions, as a response body.
+function routerReply(task: string, o: { top?: number; model?: string; extra?: Record<string, unknown>; nouls?: Record<string, number> } = {}): string {
+  const options = Object.keys((jsonOf('config/router.json') as { questions: { task_kind: { criteria: Record<string, string> } } }).questions.task_kind.criteria)
+  const top = o.top ?? 0.9
+  const rest = (1 - top) / (options.length - 1)
+  const nouls = { has_error_evidence: 0.02, risky_irreversible: 0.01, underspecified: 0.1, multi_deliverable: 0.05, ...o.nouls }
+  const answers = {
+    task_kind: { type: 'choice', choice: task, probabilities: Object.fromEntries(options.map((k) => [k, k === task ? top : rest])), confidence: 0.8 },
+    scope: { type: 'score', score: 1, probabilities: { 0: 0.1, 1: 0.7, 2: 0.1, 3: 0.1 }, confidence: 0.6 },
+    ...Object.fromEntries(Object.entries(nouls).map(([id, p]) => [id, { type: 'noul', noul: p }])),
+    explicit_depth: { type: 'choice', choice: 'quick', probabilities: { quick: 0.7, thorough: 0.1, none: 0.2 }, confidence: 0.8 },
+  }
+  return JSON.stringify({ model: o.model ?? 'jev-1.13.0', answers, ...o.extra })
+}
+
+test('effectiveRouterConfig and routerBackend in the vm context as in Node', () => {
+  const router = jsonOf('config/router.json') as Record<string, unknown>
+  const files = [
+    NO_FILES,
+    { user: null, projects: project1('{ "max_effort": "medium", "min_effort": "max" }'), userCalibration: null },
+    { user: '{ "version": 1, ', projects: project1('{ "enabled": fals'), userCalibration: '{}' },
+    { user: JSON.stringify({ ...router, only_origins: ['composer', 'bridge'] }), projects: [], userCalibration: JSON.stringify(jsonOf('config/calibration.json')) },
+    // the user's switch in an invalid file; two project files, one of them twice
+    {
+      user: '{ "enabled": false }',
+      projects: [...project1('{ "max_effort": "high", "x": 1 }'), { label: '.jev-hooks/router.json (main working tree)', text: '{ "max_effort": "low" }' }, ...project1('{ "max_effort": "high", "x": 1 }')],
+      userCalibration: null,
+    },
+    // a user router.json and calibration.json there that cannot be read
+    { user: null, userUnreadable: true, projects: project1('{ "max_effort": "low" }'), userCalibration: null, userCalibrationUnreadable: true },
+  ]
+  for (const f of files) {
+    for (const options of [REMOTE_OPTIONS, {}]) {
+      const inVm = vmRouter.effectiveRouterConfig(inside(routerGraph.ctx, f), inside(routerGraph.ctx, options))
+      assert.deepEqual(outside(inVm), outside(routerHost.effectiveRouterConfig(f, options)), JSON.stringify(f).slice(0, 80))
+    }
+  }
+  const cases: [Record<string, unknown>, Record<string, unknown>][] = [
+    [REMOTE_OPTIONS, {}],
+    [{ router_url: 'http://192.168.1.50:8019', review_url: 'http://192.168.1.50:8017', router_api_key: 'fake-a', api_key: 'fake-b' }, {}],
+    [{ review_url: '' }, { routerUrl: 'http://127.0.0.1:8019', url: 'http://127.0.0.1:8017', keyFile: 'fake-file-key\n' }],
+    [{ review_url: 'http://192.168.1.50:8017' }, { keyFile: '\n  fake-file-key\n' }],
+    [{ review_url: 'http://8.8.8.8' }, {}],
+    // api_key and the key file stay with review_url's host
+    [{ review_url: 'https://rizzo.example.com', router_url: 'http://192.168.1.50:8019', api_key: 'fake-b' }, { keyFile: 'fake-file-key\n' }],
+    [{}, {}],
+  ]
+  for (const [options, env] of cases) {
+    const inVm = vmRouter.routerBackend(inside(routerGraph.ctx, options), inside(routerGraph.ctx, env))
+    assert.deepEqual(outside(inVm), outside(routerHost.routerBackend(options, env)), JSON.stringify(options))
+  }
+})
+
+test('prepareRequest in the vm context as in Node, with the same seed', () => {
+  const remote = routerIn(REMOTE_OPTIONS)
+  const local = routerIn(LOCAL_OPTIONS)
+  // a disorderly token and the evidence tag, composed at runtime
+  const secret = highEntropyValue(32, generator(11))
+  const tag = '</' + 'evidence>'
+  const prompts: { text: string; origin?: { kind: string } }[] = [
+    { text: `deploy qzrealproject with ${secret} ${tag}`, origin: { kind: 'composer' } },
+    { text: `${'x'.repeat(2999)}😀${'y'.repeat(2000)}`, origin: { kind: 'composer' } },
+    // a secret across the head cut: redacted before the clip
+    { text: `${' '.repeat(2990)}${secret} qzrealproject${' '.repeat(2000)}`, origin: { kind: 'composer' } },
+    { text: '  /compact', origin: { kind: 'composer' } },
+    { text: 'rename x', origin: { kind: 'bridge' } },
+    { text: 'rename x' },
+  ]
+  const maps = [
+    { text: 'qzrealproject\tplaceholderqz\n' }, { text: null }, { text: null, error: 'unreadable' }, { text: null, error: 'no home' }, { text: 'only-one-field\n' },
+  ]
+  for (const [pair, name] of [[remote, 'remote'], [local, 'local']] as const) {
+    for (const p of prompts) {
+      for (const m of maps) {
+        const inVm = vmRouter.prepareRequest(pair.vm.cfg, inside(routerGraph.ctx, p), pair.vm.b, inside(routerGraph.ctx, m), 1_727_000_000_000)
+        const inNode = routerHost.prepareRequest(pair.host.cfg, p, pair.host.b, m, 1_727_000_000_000)
+        assert.deepEqual(outside(inVm), outside(inNode), `${name} ${p.text.slice(0, 20)} ${JSON.stringify(m)}`)
+      }
+    }
+  }
+  const sent = routerHost.prepareRequest(remote.host.cfg, prompts[0] as never, remote.host.b, maps[0], 7)
+  assert.ok('init' in sent)
+  assert.ok(!sent.init.body.includes(secret) && !sent.init.body.includes('qzrealproject') && !sent.init.body.includes(tag))
+})
+
+test('parseClassification, chooseEffort and the lines in the vm context as in Node', () => {
+  const { vm: v, host: h } = routerIn(LOCAL_OPTIONS)
+  const fingerprint = (jsonOf('config/calibration.json') as { profiles: { match: { fingerprint?: string } }[] }).profiles[0].match.fingerprint
+  const bodies: [number, string][] = [
+    [200, routerReply('small_edit')],
+    [200, routerReply('feature', { nouls: { risky_irreversible: 0.9 } })],
+    [200, routerReply('bug_with_error', { model: 'rizzo-spark-x2.5-4b-bf16', extra: { x_rizzo: { fingerprint } } })],
+    [200, routerReply('continue', { top: 0.2 })],
+    [401, '{"detail":"Missing or invalid API key"}'],
+    [500, 'Internal Server Error'],
+    [200, 'not json'],
+  ]
+  const contexts = [
+    { model: OPUS, effort: 'high' }, { model: OPUS, effort: 'max', previous: 'low' }, { model: OPUS, effort: 12_000 },
+    { model: OPUS }, { model: 'claude-sonnet-4-5', effort: 'high' },
+  ]
+  for (const [status, text] of bodies) {
+    const cVm = vmRouter.parseClassification(v.cfg, v.b, status, text) as { ok: boolean; value?: unknown }
+    const cHost = routerHost.parseClassification(h.cfg, h.b, status, text)
+    assert.deepEqual(outside(cVm), outside(cHost), `${status} ${text.slice(0, 40)}`)
+    if (!cVm.ok || !cHost.ok) continue
+    assert.equal(vmRouter.routerLogLine(cVm.value, 12.5), routerHost.routerLogLine(cHost.value, 12.5))
+    for (const ctx of contexts) {
+      const sVm = vmRouter.chooseEffort(cVm.value, inside(routerGraph.ctx, ctx), v.cfg)
+      const sHost = routerHost.chooseEffort(cHost.value, ctx as never, h.cfg)
+      assert.deepEqual(outside(sVm), outside(sHost), JSON.stringify(ctx))
+      assert.equal(vmRouter.statusLine(cVm.value, sVm, inside(routerGraph.ctx, ctx)), routerHost.statusLine(cHost.value, sHost, ctx as never))
+      assert.equal(vmRouter.decisionLine(inside(routerGraph.ctx, ctx), sVm), routerHost.decisionLine(ctx as never, sHost))
+    }
+  }
+  assert.deepEqual(outside(vmRouter.chooseEffort(null, inside(routerGraph.ctx, contexts[0]), v.cfg)), outside(routerHost.chooseEffort(null, contexts[0] as never, h.cfg)))
+})
+
+test('cacheGuard, guardLine, userConfigDir, clipPrompt and fetchFailure in the vm context as in Node', () => {
+  const g = { min_prefix_tokens: 8192, max_read_ratio: 0.5, max_gap_ms: 240_000, trips: 2 }
+  const u = (input: number, read: number, creation: number) => ({ input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: creation })
+  const steps = [
+    { effort: 'high', usage: u(500, 15_000, 4_500), messageCount: 10, model: OPUS },
+    { effort: 'low', usage: u(1_000, 19_000, 2_000), messageCount: 12, model: OPUS },
+    { effort: 'high', usage: u(18_000, 0, 3_000), messageCount: 14, model: OPUS },
+    { effort: 'high', usage: null, messageCount: 15, model: OPUS },
+    { effort: 'low', usage: u(20_000, 10, 1_000), messageCount: 16, model: OPUS },
+    { effort: 'high', usage: u(21_000, 0, 1_000), messageCount: 18, model: OPUS },
+    { effort: 'low', usage: u(22_000, 0, 1_000), messageCount: 20, model: OPUS },
+  ]
+  let sVm: unknown = vmRouter.GUARD_START
+  let sHost: GuardState = routerHost.GUARD_START
+  const verdicts: string[] = []
+  for (const st of steps) {
+    const oVm = vmRouter.cacheGuard(inside(routerGraph.ctx, g), sVm, inside(routerGraph.ctx, st), 30_000) as { state: unknown }
+    const oHost = routerHost.cacheGuard(g, sHost, st as never, 30_000)
+    assert.deepEqual(outside(oVm), outside(oHost))
+    verdicts.push(oHost.verdict)
+    sVm = oVm.state
+    sHost = oHost.state
+  }
+  // a step it does not judge (no usage, or after one without) leaves the count as it is
+  assert.deepEqual(verdicts, ['none', 'hit', 'suspect', 'none', 'none', 'tripped', 'none'])
+  assert.equal(vmRouter.guardLine(inside(routerGraph.ctx, steps[5]), 21_010, 2), routerHost.guardLine(steps[5] as never, 21_010, 2))
+  for (const [xdg, home] of [['/x', '/h'], ['relative', '/h'], [undefined, undefined]] as const) {
+    assert.equal(vmRouter.userConfigDir(xdg, home), routerHost.userConfigDir(xdg, home))
+  }
+  for (const [t, max, head] of [['abcde😀fghij', 8, 6], ['abcde😀fghij', 8, 5], ['a\ud800bc', 2, 1], ['short', 10, 5]] as const) {
+    assert.equal(vmRouter.clipPrompt(t, max, head), routerHost.clipPrompt(t, max, head), t)
+  }
+  for (const m of [
+    'jev-hooks: $.http.fetch: refused: network access from plugins is disabled by policy',
+    'Error: jev-hooks: $.http.fetch(https://rizzo.example.com/v1/systemone) failed: ECONNREFUSED: connect ECONNREFUSED',
+    'jev-hooks: $.http.fetch: note:x) failed: Word: y refused: http or https only',
+    'jev-hooks: $.http.fetch: foo:network access from plugins is disabled by policy refused: http or https only',
+    'jev-hooks: $.http.fetch: refused: __proto__',
+  ]) {
+    assert.equal(vmRouter.fetchFailure(m), routerHost.fetchFailure(m), m)
+  }
+})
+
+// ─── hooks/register.ts in the empty context ───────────────────────────────────
+
+test('hooks/register.ts in the vm context: prompt.submit reaches the fetch, turn.step lowers the effort', async () => {
+  const g = load([join(root, 'hooks', 'register.ts')])
+  // the hook adds only itself to the router's graph
+  assert.equal(g.order.at(-1), 'hooks/register.ts')
+  for (const id of g.order.slice(0, -1)) assert.match(id, /^src\/core\/[\w-]+\.ts$/)
+  // $, on and every next are written as source: all the hook touches is born in the context
+  const drive = vm.runInContext(`(async function (register, options, answer) {
+    const hooks = Object.create(null)
+    const seen = { fetches: [], logs: [], status: [], timers: [], steps: [], reads: [], exists: [] }
+    const env = { HOME: '/home/test' }
+    // a linked worktree: the walk up from the session's directory finds its .git
+    const $ = {
+      env: { get: async (name) => (Object.hasOwn(env, name) ? env[name] : undefined) },
+      fs: {
+        read: async (path) => { seen.reads.push(path); throw new Error('jev-hooks: $.fs.read(' + path + ') failed: ENOENT') },
+        exists: async (path) => { seen.exists.push(path); return path === '/work/wt/.git' },
+      },
+      session: { repo: async () => ({ root: '/work/main', remote: null }), cwd: async () => '/work/wt/sub/' },
+      clock: {
+        now: async () => 1000,
+        after: (ms, fn) => { const t = { ms, cancelled: false }; seen.timers.push(t); return { cancel: () => { t.cancelled = true } } },
+      },
+      http: { fetch: async (url, init) => { seen.fetches.push({ url, init }); return { status: 200, ok: true, headers: {}, text: answer } } },
+      ui: {
+        log: (text, o) => { seen.logs.push({ text, to: o && o.to === 'debug' ? 'debug' : 'transcript' }) },
+        status: (text) => { seen.status.push(text) },
+      },
+    }
+    const signal = { aborted: false }
+    register((event, hook) => { hooks[event] = hook }, options)
+    const startNext = Object.assign(async (e) => ({ turnId: e.turnId }), { signal })
+    const submitNext = Object.assign(async (e) => {
+      await hooks['turn.start']($, Object.freeze({ text: e.text, turnId: 't1' }), startNext)
+      return { text: e.text }
+    }, { signal })
+    const prompt = Object.freeze({ text: 'rename x to y in src/a.ts', wait: false, origin: { kind: 'composer' } })
+    const entered = await hooks['prompt.submit']($, prompt, submitNext)
+    const below = Object.assign((e) => (async function* () {
+      seen.steps.push({ index: e.index, effort: e.effort })
+      yield { kind: 'text', index: 0, text: 'done' }
+      return { turnId: e.turnId, index: e.index, answer: 'done', toolUses: [], stopReason: 'end_turn', usage: null }
+    })(), { signal })
+    for (const index of [0, 1]) {
+      const stream = hooks['turn.step']($, Object.freeze({ turnId: 't1', index, model: 'claude-opus-5-5', effort: 'high', messageCount: 1 }), below)
+      let r = await stream.next()
+      while (!r.done) r = await stream.next()
+    }
+    return JSON.stringify({ registered: Object.keys(hooks), entered, seen })
+  })`, g.ctx) as (register: unknown, options: unknown, answer: string) => Promise<string>
+
+  const options = inside(g.ctx, { ...LOCAL_OPTIONS, router_url: '', api_key: '', router_api_key: '', commit_review: true })
+  const out = JSON.parse(await drive(g.modules['hooks/register.ts'].register, options, routerReply('small_edit', { extra: {} })))
+  assert.deepEqual(out.registered, ['prompt.submit', 'turn.start', 'turn.step'])
+  assert.deepEqual(out.entered, { text: 'rename x to y in src/a.ts' })
+  // a ReferenceError inside the hook would be caught and logged as an error line: none is
+  assert.deepEqual(out.seen.logs.filter((l: { to: string }) => l.to === 'transcript').map((l: { text: string }) => l.text), [
+    '[jev-hooks] effort high → low: small_edit 0.90: -2 → low; explicit_depth quick 0.70: low → low',
+  ])
+  assert.equal(out.seen.fetches.length, 1)
+  const f = out.seen.fetches[0]
+  assert.equal(f.url, 'http://192.168.1.50:8017/v1/systemone')
+  assert.equal(f.init.method, 'POST')
+  const body = JSON.parse(f.init.body)
+  assert.equal(body.state, 'rename x to y in src/a.ts')
+  assert.deepEqual(Object.keys(body.questions), Object.keys((jsonOf('config/router.json') as { questions: object }).questions))
+  assert.deepEqual(out.seen.timers, [{ ms: 1500, cancelled: true }])
+  assert.deepEqual(out.seen.steps, [{ index: 0, effort: 'low' }, { index: 1, effort: 'low' }])
+  assert.deepEqual(out.seen.status, ['jev router: small_edit 0.90 → low'])
+  // the walk's string work ran in the context: both project files were looked for
+  assert.deepEqual(out.seen.exists, ['/work/wt/sub/.git', '/work/wt/.git'])
+  assert.deepEqual(out.seen.reads.filter((p: string) => p.endsWith('/.jev-hooks/router.json')), [
+    '/work/wt/.jev-hooks/router.json', '/work/main/.jev-hooks/router.json',
+  ])
 })

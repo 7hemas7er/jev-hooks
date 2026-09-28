@@ -1,6 +1,8 @@
-// Hand-written UTF-8 encoding. In the node:vm context of Claude Code's module loader
-// TextEncoder does not exist, and the real bytes are needed: sha256Hex works on
-// bytes, and the 256 KB limit of the state is measured in bytes on the serialized JSON.
+// Hand-written UTF-8 encoding. The core uses no TextEncoder (rule 4): Claude Code
+// 2.1.283 declares it in the hooks' environment and 2.1.282 did not, so without it the
+// core runs the same in Node, in older builds and in the stricter context the tests
+// build. The real bytes are needed: sha256Hex works on bytes, and the 256 KB limit of
+// the state is measured in bytes on the serialized JSON.
 // A lone surrogate becomes U+FFFD (EF BF BD), as TextEncoder and Buffer.from do: the
 // same text must give the same hash in Node and in the router.
 

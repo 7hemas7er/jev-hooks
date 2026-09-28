@@ -22,7 +22,7 @@ test('the generated file is identical to what the script would write', () => {
   assert.equal(readFileSync(TARGET, 'utf8'), expectedDefaults(), 'run node scripts/generate-defaults.ts again')
 })
 
-test('the defaults pass validation, as the router will read them', () => {
+test('the defaults pass validation, as the router reads them', () => {
   const k = validateCalibration(DEFAULT_CALIBRATION, 'calibration.json (default)')
   assert.ok(k.ok, k.ok ? '' : k.error.message)
   if (!k.ok) return

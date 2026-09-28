@@ -11,5 +11,5 @@
     "lib": ["es2023"],
     "types": []
   },
-  "include": ["src/core/**/*.ts", "hooks/**/*.ts", "types/claude-code.d.ts"]
+  "include": ["src/core/**/*.ts", "hooks/**/*.ts", ".claude/types"]
 }

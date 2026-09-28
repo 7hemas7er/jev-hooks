@@ -1,6 +1,8 @@
-// Pure SHA-256 (FIPS 180-4). The router's node:vm context has no crypto, and
-// the sha is needed there too: it identifies the exact text of a question, and a
-// calibration fit is valid only for that text. The test compares it with node:crypto.
+// Pure SHA-256 (FIPS 180-4). The core uses no crypto (rule 4): Claude Code 2.1.283
+// declares crypto in the hooks' environment and 2.1.282 did not, so without it the core
+// runs the same in Node, in older builds and in the stricter context the tests build.
+// The sha is needed in the router too: it identifies the exact text of a question, and
+// a calibration fit is valid only for that text. The test compares it with node:crypto.
 import { utf8 } from './utf8.ts'
 
 // First 32 bits of the fractional parts of the cube roots of the first 64 primes.

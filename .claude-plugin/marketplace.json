@@ -1,11 +1,11 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "7hemas7er-jev-hooks",
-  "description": "Commit review with typed questions, answered by Jev or rizzo-flow",
+  "description": "Commit review and a per-turn effort router with typed questions, answered by Jev or rizzo-flow",
   "owner": { "name": "7hemas7er" },
   "plugins": [
     { "name": "jev-hooks",
-      "description": "Commit reviewer with typed questions (Jev or rizzo-flow): commit hook and jev-review CLI",
+      "description": "Commit reviewer and per-turn effort router with typed questions (Jev or rizzo-flow): commit hook, jev-review CLI and a function hook",
       "version": "0.1.1", "category": "security", "source": "./" }
   ]
 }

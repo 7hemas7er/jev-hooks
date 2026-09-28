@@ -1,8 +1,8 @@
 // review() against the fake server, over real HTTP: one test for each row of the
 // error matrix below, plus the sending rules (parallelism, retries, overflow). The
 // rows that do not go through review() (Node missing, git, .jev-hooks/ rules that
-// differ from HEAD, router) are marked as todo with the files that cover them, or say
-// that nothing does yet: the matrix stays whole here, and what is missing shows.
+// differ from HEAD, router) are marked as todo with the files that cover them: the
+// matrix stays whole here, and each row says where its case is tested.
 //
 // No realistic secret and no injection phrase in the source: the AWS key of the floors
 // is composed at runtime, otherwise the reviewer would fire on the repo itself.
@@ -706,8 +706,8 @@ test('error matrix: floor with the backend down: the floor\'s lane, in CI too', 
   assert.equal(r2.exit_code, 3)
 })
 
-test('error matrix: router module rejected or unloaded', { todo: 'the effort router is planned: no router code exists yet' })
-test('error matrix: $.http.fetch rejected', { todo: 'the effort router is planned: no router code exists yet' })
+test('error matrix: router module rejected or unloaded', { todo: 'outside the core: the router is a function hook apart from the commit hook; with effort_router off it registers nothing, in tests/router/register.test.ts; the module loads and runs in the strict context in tests/structure/vm-pure.test.ts, and `claude plugin validate .claude-plugin/plugin.json` lists what it hooks and calls' })
+test('error matrix: $.http.fetch rejected', { todo: 'outside the core: in tests/router/register.test.ts (policy or essential-traffic-only refusal, timeout, HTTP errors: the turn keeps its effort, one transcript line, repeats to the debug log)' })
 
 // ─── Redaction, mask map and project detectors ────────────────────────────────
 

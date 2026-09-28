@@ -9,16 +9,16 @@ import {
   NO_WORDS, readNumber, readObject, safePointer, RE_ID, requiredField, addProblem, onlyFields, readString, readOneOf,
 } from './json.ts'
 import type { Reader, PlainObject, NumberConstraints } from './json.ts'
-import { LIMITS, HOOK_ESCALATION_MODES, EFFORT_SCALE } from './types.ts'
+import { LIMITS, HOOK_ESCALATION_MODES, EFFORT_SCALE, PROMPT_ORIGIN_KINDS } from './types.ts'
 import type {
   Calibration, CheckDef, Checks, CiConclusion, RouterCondition, ComposedConfig, Lane, WireQuestion, Effort, Result,
   ConfigFile, Json, ConfigLayers, Op, Origin, EffortStep, Policy, Problem, Profile, Rule, Detector,
-  RouterConfig, QuestionType, CalibrationEntry,
+  RouterConfig, QuestionType, CalibrationEntry, CacheGuard,
 } from './types.ts'
 
 export type {
   Calibration, CheckDef, Checks, CiConclusion, RouterCondition, ComposedConfig, Lane, ConfigFile, ConfigLayers, Op,
-  Origin, EffortStep, Policy, Profile, Rule, Detector, RouterConfig, CalibrationEntry,
+  Origin, EffortStep, Policy, Profile, Rule, Detector, RouterConfig, CalibrationEntry, CacheGuard,
 } from './types.ts'
 
 // RE_ID (json.ts): check ids, router question ids, detector names.
@@ -1212,8 +1212,9 @@ export function validateCalibration(json: unknown, file: string): Result<Calibra
 const ROUTER_FIELDS = [
   'version', 'enabled', 'timeout_ms', 'busy_after_timeout_ms', 'prompt_max_chars', 'prompt_head_chars', 'skip_prefixes',
   'only_origins', 'only_models', 'min_effort', 'max_effort', 'respect_session_effort', 'assume_session_effort',
-  'min_top_probability', 'base', 'adjust', 'explicit_depth', 'floors', 'questions',
+  'min_top_probability', 'cache_guard', 'base', 'adjust', 'explicit_depth', 'floors', 'questions',
 ] as const
+const CACHE_GUARD_FIELDS = ['min_prefix_tokens', 'max_read_ratio', 'max_gap_ms', 'trips'] as const
 const MSG_STEP = `expected an integer step between -4 and 4 or a level among ${EFFORT_SCALE.map((x) => `"${x}"`).join(', ')}`
 
 function isEffort(v: unknown): v is Effort {
@@ -1270,6 +1271,22 @@ function readRouterCondition(l: Reader, v: unknown, p: string, questions: Record
   return x === undefined ? undefined : { question: q, level_gte: x }
 }
 
+// null turns the guard off; an object has all four fields, none of them defaulted,
+// because each one decides when the router switches itself off.
+function readCacheGuard(l: Reader, v: unknown, p: string): CacheGuard | null | undefined {
+  if (v === null) return null
+  const o = readObject(l, v, p)
+  if (!o) return undefined
+  onlyFields(l, o, p, CACHE_GUARD_FIELDS)
+  const n = (k: typeof CACHE_GUARD_FIELDS[number], c: NumberConstraints): number | undefined => readNumber(l, requiredField(l, o, p, k), childPointer(p, k), c)
+  const minPrefix = n('min_prefix_tokens', { integer: true, min: 0, max: 10_000_000 })
+  const ratio = n('max_read_ratio', { min: 0, max: 1 })
+  const gap = n('max_gap_ms', { integer: true, min: 0, max: 3_600_000 })
+  const trips = n('trips', { integer: true, min: 1, max: 100 })
+  if (minPrefix === undefined || ratio === undefined || gap === undefined || trips === undefined) return undefined
+  return { min_prefix_tokens: minPrefix, max_read_ratio: ratio, max_gap_ms: gap, trips }
+}
+
 export function validateRouter(json: unknown, calibration: Calibration, file: string): Result<RouterConfig> {
   const l = reader(file)
   const o = readObject(l, json, '')
@@ -1289,7 +1306,17 @@ export function validateRouter(json: unknown, calibration: Calibration, file: st
   if (maxChars !== undefined && headChars !== undefined && headChars > maxChars) addProblem(l, p('prompt_head_chars'), `must be ≤ prompt_max_chars (${maxChars})`)
   const texts = (k: string, min: number): string[] | undefined => readListOf(l, r(k), p(k), (x, px) => readString(l, x, px, { nonEmpty: true }), { min })
   const skip = texts('skip_prefixes', 0)
-  const origins = texts('only_origins', 1)
+  // A kind the engine never sends would skip every prompt without a word: only the
+  // kinds of the Claude Code version the router was checked against.
+  const origins = readListOf(l, r('only_origins'), p('only_origins'), (x, px) => {
+    const kind = readString(l, x, px, { nonEmpty: true })
+    if (kind === undefined) return undefined
+    if (!(PROMPT_ORIGIN_KINDS as readonly string[]).includes(kind)) {
+      addProblem(l, px, `unknown origin "${kind}": expected one of ${PROMPT_ORIGIN_KINDS.join(', ')} (Claude Code 2.1.283)`)
+      return undefined
+    }
+    return kind
+  }, { min: 1 })
   const models = texts('only_models', 1)
   const minE = readOneOf(l, r('min_effort'), p('min_effort'), EFFORT_SCALE)
   const maxE = readOneOf(l, r('max_effort'), p('max_effort'), EFFORT_SCALE)
@@ -1299,6 +1326,7 @@ export function validateRouter(json: unknown, calibration: Calibration, file: st
     ? null
     : readOneOf(l, o.assume_session_effort, p('assume_session_effort'), EFFORT_SCALE)
   const minTop = readNumber(l, r('min_top_probability'), p('min_top_probability'), { min: 0, max: 1 })
+  const guard = readCacheGuard(l, r('cache_guard'), p('cache_guard'))
 
   // questions: the same validation as checks.json, and only type/instructions/criteria go to the backend
   const questions: Record<string, WireQuestion> = {}
@@ -1405,13 +1433,13 @@ export function validateRouter(json: unknown, calibration: Calibration, file: st
 
   if (l.problems.length > before || enabled === undefined || timeout === undefined || busyAfter === undefined
     || maxChars === undefined || headChars === undefined || !skip || !origins || !models || !minE || !maxE
-    || respect === undefined || assume === undefined || minTop === undefined || !adjust || !floors || !taskQuestion) {
+    || respect === undefined || assume === undefined || minTop === undefined || guard === undefined || !adjust || !floors || !taskQuestion) {
     return readResult<RouterConfig>(l, undefined, 'router.json')
   }
   return readResult<RouterConfig>(l, {
     enabled, timeout_ms: timeout, busy_after_timeout_ms: busyAfter, prompt_max_chars: maxChars, prompt_head_chars: headChars,
     skip_prefixes: skip, only_origins: origins, only_models: models, min_effort: minE, max_effort: maxE,
-    respect_session_effort: respect, assume_session_effort: assume, min_top_probability: minTop, base, adjust,
+    respect_session_effort: respect, assume_session_effort: assume, min_top_probability: minTop, cache_guard: guard, base, adjust,
     explicit_depth: explicit, floors, questions, taskQuestion, calibration, file,
   }, 'router.json')
 }
@@ -1424,10 +1452,17 @@ export function validateRouter(json: unknown, calibration: Calibration, file: st
 // router.json field by name, every other key of the file as a placeholder.
 const ROUTER_WORDS: ReadonlySet<string> = new Set(ROUTER_FIELDS)
 
+// Each note is a transcript line, and a cloned repo writes the file: past the first
+// few ignored fields only their number is said, so a file with a hundred thousand
+// keys still gives a handful of lines.
+const SHOWN_IGNORED_FIELDS = 3
+
 export function routerRestrictions(base: RouterConfig, json: unknown, file: string): { router: RouterConfig; notes: string[] } {
   const notes: string[] = []
+  let ignored = 0
   const ignore = (p: string, reason: string): void => {
-    notes.push(`${file} ${safePointer(p, ROUTER_WORDS)}: field ignored: ${reason}`)
+    ignored++
+    if (ignored <= SHOWN_IGNORED_FIELDS) notes.push(`${file} ${safePointer(p, ROUTER_WORDS)}: field ignored: ${reason}`)
   }
   if (!isObject(json)) return { router: base, notes: [`${file}: invalid, ignored (expected an object)`] }
   const router: RouterConfig = { ...base }
@@ -1447,6 +1482,8 @@ export function routerRestrictions(base: RouterConfig, json: unknown, file: stri
     }
     ignore(p, 'from the project the router only accepts "enabled": false and a lower "max_effort"')
   }
+  const more = ignored - SHOWN_IGNORED_FIELDS
+  if (more > 0) notes.push(`${file}: ${more} more ${more === 1 ? 'field' : 'fields'} ignored`)
   return { router, notes }
 }
 

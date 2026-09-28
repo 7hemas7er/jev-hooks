@@ -10,6 +10,7 @@ import {
   validateCalibration, validateChecks, validatePolicy, validateRouter,
 } from '../../src/core/config.ts'
 import { wireQuestion, hashForm, questionHash } from '../../src/core/systemone.ts'
+import { PROMPT_ORIGIN_KINDS } from '../../src/core/types.ts'
 import type { Checks, Result, Json, ConfigLayers, Policy, Problem } from '../../src/core/types.ts'
 import { phrasesForClaude, RE_MARKER } from '../helpers/fake-secrets.ts'
 
@@ -447,6 +448,18 @@ const routerCases: [string, Mod, string, RegExp][] = [
   ['label inside a question', (r) => { r.questions.scope.label = 'Breadth' }, '/questions/scope/label', /unknown field/],
   ['null instructions', (r) => { r.questions.underspecified.instructions = null }, '/questions/underspecified/instructions', /cannot be null/],
   ['timeout beyond the 30 s of $.http.fetch', (r) => { r.timeout_ms = 60_000 }, '/timeout_ms', /between 50 and 30000/],
+  // "human", from an earlier draft, is not a kind Claude Code 2.1.283 sends: the router would skip every prompt
+  ['origin "human" of an earlier draft', (r) => { r.only_origins = ['human'] }, '/only_origins/0', /^unknown origin "human": expected one of composer, bridge, sdk, .*, plugin \(Claude Code 2\.1\.283\)$/],
+  ['an origin with the wrong case', (r) => { r.only_origins = ['composer', 'Bridge'] }, '/only_origins/1', /unknown origin "Bridge"/],
+  ['no origin', (r) => { r.only_origins = [] }, '/only_origins', /non-empty list/],
+  ['cache_guard missing', (r) => { delete r.cache_guard }, '/cache_guard', /required field missing/],
+  ['cache_guard not an object', (r) => { r.cache_guard = 2 }, '/cache_guard', /expected an object/],
+  ['cache_guard with an unknown field', (r) => { r.cache_guard.ttl_ms = 300_000 }, '/cache_guard/ttl_ms', /unknown field/],
+  ['cache_guard without trips', (r) => { delete r.cache_guard.trips }, '/cache_guard/trips', /required field missing/],
+  ['cache_guard zero trips', (r) => { r.cache_guard.trips = 0 }, '/cache_guard/trips', /integer between 1 and 100/],
+  ['cache_guard read ratio over 1', (r) => { r.cache_guard.max_read_ratio = 1.5 }, '/cache_guard/max_read_ratio', /number between 0 and 1/],
+  ['cache_guard fractional prefix', (r) => { r.cache_guard.min_prefix_tokens = 8192.5 }, '/cache_guard/min_prefix_tokens', /integer between 0 and 10000000/],
+  ['cache_guard gap over an hour', (r) => { r.cache_guard.max_gap_ms = 3_600_001 }, '/cache_guard/max_gap_ms', /integer between 0 and 3600000/],
 ]
 
 for (const [name, mod, pointer, message] of routerCases) {
@@ -460,6 +473,20 @@ for (const [name, mod, pointer, message] of routerCases) {
     assert.match(x.message, message)
   })
 }
+
+test('router.json: every origin kind of Claude Code 2.1.283 is accepted, and a null cache_guard turns the guard off', () => {
+  const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
+  const base = valueOf(validateRouter(ROUTER, k, 'router.json'))
+  assert.deepEqual(base.only_origins, ['composer'])
+  assert.deepEqual(base.cache_guard, { min_prefix_tokens: 8192, max_read_ratio: 0.5, max_gap_ms: 240_000, trips: 2 })
+  const r = structuredClone(ROUTER)
+  r.only_origins = [...PROMPT_ORIGIN_KINDS]
+  r.cache_guard = null
+  const all = valueOf(validateRouter(r, k, 'router.json'))
+  assert.deepEqual(all.only_origins, [...PROMPT_ORIGIN_KINDS])
+  assert.equal(all.cache_guard, null)
+  assert.equal(PROMPT_ORIGIN_KINDS.length, 16)
+})
 
 test('questionProblems: the wire question allows only type, instructions and criteria', () => {
   assert.deepEqual(questionProblems({ type: 'noul', instructions: 'x?', criteria: { true: 'a', false: 'b' } }, 'body', '/questions/q'), [])
@@ -944,4 +971,18 @@ test('project router.json: a router.json field is named, a valid but unknown key
   const base = valueOf(validateRouter(ROUTER, k, 'router.json'))
   const r = routerRestrictions(base, { [HOSTILE_IDS[0]]: 1, min_effort: 'low' }, '.jev-hooks/router.json')
   assert.deepEqual(r.notes.map((n) => n.split(':')[0]), ['.jev-hooks/router.json /‹key›', '.jev-hooks/router.json /min_effort'])
+})
+
+test('project router.json: past three ignored fields only their number is noted', () => {
+  const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
+  const base = valueOf(validateRouter(ROUTER, k, 'router.json'))
+  const four = routerRestrictions(base, { a: 1, b: 2, min_effort: 'low', questions: {}, max_effort: 'low' }, 'r.json')
+  assert.deepEqual(four.notes.map((n) => n.split(':')[0]), ['r.json /‹key›', 'r.json /‹key›', 'r.json /min_effort', 'r.json'])
+  assert.equal(four.notes[3], 'r.json: 1 more field ignored')
+  assert.equal(four.router.projectCap, 'low')
+  const many = routerRestrictions(base, Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`k${i}`, i])), 'r.json')
+  assert.equal(many.notes.length, 4)
+  assert.equal(many.notes[3], 'r.json: 7 more fields ignored')
+  // three exactly: no count
+  assert.equal(routerRestrictions(base, { a: 1, b: 2, c: 3 }, 'r.json').notes.length, 3)
 })

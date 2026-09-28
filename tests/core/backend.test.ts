@@ -246,10 +246,11 @@ test('explicit --url: a key only from a layer with the same origin', () => {
   assert.equal(ko(resolveBackend(cli('https://api.typesafe.ai', { envUrl: 'http://127.0.0.1:1', envKey: ENV_KEY }))).kind, 'not_configured')
 })
 
-test('api_key applies to review_url and to router_url: same layer, same (URL, key, model)', () => {
-  // the planned router will build its userConfig layer from router_url || review_url
-  // and router_api_key || api_key (options it will add when it ships): the key stays
-  // inside the layer the user wrote
+test('api_key applies to review_url and to a router_url on the same host: same layer, same (URL, key, model)', () => {
+  // the router builds its userConfig layer from router_url || review_url and
+  // router_api_key || api_key, api_key only when router_url has review_url's scheme and
+  // host (routerBackend, tested in tests/core/router.test.ts): the key stays inside the
+  // layer the user wrote
   const options = { review_url: 'http://192.168.1.50:8017', router_url: 'http://192.168.1.50:8019', api_key: USER_KEY, router_api_key: '' }
   const reviewer = ok(resolveBackend({ layers: [{ name: 'userConfig', url: options.review_url, key: options.api_key }] }))
   const router = ok(resolveBackend({ layers: [{ name: 'userConfig', url: options.router_url || options.review_url, key: options.router_api_key || options.api_key }] }))

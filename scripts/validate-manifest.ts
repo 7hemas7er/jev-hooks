@@ -7,7 +7,7 @@
 //
 // Usage: node scripts/validate-manifest.ts [root]   (exit 1 if there is a problem)
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { composeConfig, HOOK_TIMEOUT_S, validateRouter } from '../src/core/config.ts'
 import { formatProblem, parseJson } from '../src/core/json.ts'
@@ -36,7 +36,7 @@ function readJsonRel(rel: string): unknown {
   }
 }
 
-// userConfig fields allowed by the Claude Code 2.1.282 schema (checked in the binary).
+// userConfig fields allowed by the Claude Code 2.1.283 schema (re-checked in the binary).
 const OPTION_FIELDS = new Set(['type', 'title', 'description', 'required', 'default', 'multiple', 'sensitive', 'min', 'max', 'options'])
 const OPTION_TYPES = new Set(['string', 'number', 'boolean', 'directory', 'file'])
 
@@ -159,7 +159,17 @@ function validateHooks(h: unknown): void {
       // Claude Code's loader accepts only one module per plugin
       if (h.modules.length > 1) problems.push(`${f} /modules: at most one module per plugin`)
       h.modules.forEach((mod, i) => {
-        if (typeof mod !== 'string' || !existsSync(join(root, 'hooks', mod))) problems.push(`${f} /modules/${i}: "${String(mod)}" does not exist in hooks/`)
+        const pm = `${f} /modules/${i}`
+        if (typeof mod !== 'string' || mod === '') {
+          problems.push(`${pm}: expected a path relative to hooks/`)
+          return
+        }
+        // Claude Code resolves the path against hooks/ and refuses one that leaves the
+        // plugin's folder; the repo's code is TypeScript run by type stripping (rule 1)
+        if (isAbsolute(mod) || mod.startsWith('\\')) problems.push(`${pm}: "${mod}" must be relative to hooks/`)
+        else if (!(resolve(root, 'hooks', mod) + sep).startsWith(root + sep)) problems.push(`${pm}: "${mod}" leaves the plugin's folder`)
+        else if (!mod.endsWith('.ts')) problems.push(`${pm}: "${mod}" must be a .ts file`)
+        else if (!existsSync(join(root, 'hooks', mod))) problems.push(`${pm}: "${mod}" does not exist in hooks/`)
       })
     }
   }
