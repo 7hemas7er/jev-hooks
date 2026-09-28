@@ -42,8 +42,9 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
-      # Pin the commit SHA of the jev-hooks release you have reviewed, not a branch.
-      - uses: 7hemas7er/jev-hooks@main
+      # A commit SHA, never a branch: this step holds the key. Replace it with the SHA of
+      # the jev-hooks release you have read.
+      - uses: 7hemas7er/jev-hooks@8bbae2a7a898960f2be2c78f8762229b6d254d08 # 0.4.0 code
         with:
           input-dir: ${{ runner.temp }}/jev-input
           url: ${{ vars.JEV_URL }}
