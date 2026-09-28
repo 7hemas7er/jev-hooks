@@ -22,9 +22,10 @@ for. A rename does not need the reasoning a design question needs.
 > effort router is built, opt-in and early access: it runs on Claude Code's function
 > hooks, and one live run on Claude Code 2.1.283 has shown the effort it sets reaching
 > the API request and the prompt cache surviving the change (README → Limitations).
-> The GitHub Action is built: a CI job runs it on GitHub's runner on a diff, and tests
-> against a fake GitHub API cover its two-phase flow, which has not yet reviewed a real
-> pull request. About 890 offline tests cover all of it. The reviewer's thresholds come from a small synthetic bench (below)
+> The GitHub Action is built: a CI job runs it on GitHub's runner on a diff, tests
+> against a fake GitHub API cover its two-phase flow, and that flow has run on real
+> pull requests in a test repository, without a backend (see
+> [GitHub Action](#github-action)). About 890 offline tests cover all of it. The reviewer's thresholds come from a small synthetic bench (below)
 > and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
 
 ## Why typed decisions
@@ -63,7 +64,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
-| GitHub Action (`action.yml`) | built; not yet run on a real pull request | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
+| GitHub Action (`action.yml`) | built; two-phase flow run on real pull requests, not yet with a backend | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
 
 ## How it works
 
@@ -419,6 +420,15 @@ branch protection.
 Nothing runs an agent on a fork's code: the escalation stays text in the check run, for
 a maintainer to hand to Claude. `mode: file` reviews a diff file with no GitHub API;
 this repository's CI uses it as a smoke test.
+
+The two workflows, copied unchanged with the action pinned by SHA, ran on real pull
+requests in a private test repository with no `JEV_URL`. A plain pull request got its
+`jev-review` check run on the head commit, completed as `neutral` ("backend not
+configured"). A pull request that rewrote the first phase to forge its artifact (the
+base sha as head, an empty diff) got `failure` (`untrusted_input`: "first-phase
+artifact of another pull request or head sha"), on the real head commit. Not run yet:
+a review with a backend from CI, a pull request from a fork, and a dedicated GitHub
+App as the check's expected source.
 
 ## Configuration: open a JSON, never touch the code
 
