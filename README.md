@@ -22,7 +22,9 @@ for. A rename does not need the reasoning a design question needs.
 > effort router is built, opt-in and early access: it runs on Claude Code's function
 > hooks, and one live run on Claude Code 2.1.283 has shown the effort it sets reaching
 > the API request and the prompt cache surviving the change (README → Limitations).
-> About 870 offline tests cover them. The GitHub Action is designed but not built yet. The reviewer's thresholds come from a small synthetic bench (below)
+> The GitHub Action is built: a CI job runs it on GitHub's runner on a diff, and tests
+> against a fake GitHub API cover its two-phase flow, which has not yet reviewed a real
+> pull request. About 890 offline tests cover all of it. The reviewer's thresholds come from a small synthetic bench (below)
 > and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
 
 ## Why typed decisions
@@ -61,7 +63,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
-| GitHub Action | planned | Two-phase review of pull requests, safe for forks |
+| GitHub Action (`action.yml`) | built; not yet run on a real pull request | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
 
 ## How it works
 
@@ -125,7 +127,7 @@ What the hook does per lane:
 
 The hook is a safety net, not a barrier: it sees commits that Claude makes with its
 Bash tool, not the ones you make in your own terminal, not commits hidden behind a
-script or an alias. The planned GitHub Action is where a required check belongs.
+script or an alias. The [GitHub Action](#github-action) is where a required check belongs.
 
 ### On demand: `/jev-review` and `/jev-status`
 
@@ -345,6 +347,47 @@ skills (they answer that the plugin is off), the guard and the router. If you al
 run Anthropic's security-guidance plugin, it reviews `git commit` too: keep both, or
 switch one off.
 
+## GitHub Action
+
+The Action reviews pull requests in two phases, so that a pull request from a fork
+never runs next to your secrets. Copy the two files of
+[`examples/workflows/`](examples/workflows/) into `.github/workflows/`:
+
+- **`jev-review-collect.yml`**, on `pull_request`, with no secret and no code of the
+  pull request run: it uploads the PR number, the two SHAs and the diff as an artifact.
+  On a fork its author can rewrite this workflow, so its output is treated as hostile.
+- **`jev-review.yml`**, on `workflow_run`, from your default branch, with the secrets.
+  It takes the head sha, branch and repository from the event (trusted), finds the one
+  open pull request they match, reviews the diff GitHub's API gives for the two SHAs
+  (the artifact is only a cross-check) and always publishes a completed `jev-review`
+  check run, with the verdict, the values and the escalation prompt ready for a review
+  with Claude. The rules come from `.jev-hooks/` on the default branch.
+
+Set the variable `JEV_URL` (and optionally `JEV_MODEL`) and, if the backend needs one,
+the secret `JEV_API_KEY`. A backend on your tailnet takes an ephemeral node:
+`JEV_TAILSCALE=true` and the `TS_OAUTH_*` secrets, with an ACL that reaches only the
+backend's port. Pin the action to the SHA of a release you have read.
+
+| Outcome | Check conclusion (default) |
+|---|---|
+| BLOCK | `failure` |
+| SECURITY REVIEW, or an escalation | `neutral`: visible, does not block the merge |
+| NITS, MERGE | `success` |
+| Backend down, unreachable or not configured | `neutral` (`ci.backend_unavailable`) |
+| Anything the PR author controls or can break: first phase failed, artifact missing or foreign, pull request not identifiable, diff too large, partial coverage, an internal error | `failure` (`ci.untrusted_input`) |
+
+To stop merges on a SECURITY REVIEW, put `{"lanes": [{"name": "SECURITY REVIEW", "ci":
+"failure"}]}` in `.jev-hooks/policy.json` and make the check required. A required check
+has a catch: created with `GITHUB_TOKEN`, it belongs to the GitHub Actions app, and a
+fork can add a workflow with a job named `jev-review` that succeeds on the same head
+sha. Create the check run with a dedicated GitHub App instead (`checks-token`, from
+`actions/create-github-app-token`) and set that app as the check's expected source in
+branch protection.
+
+Nothing runs an agent on a fork's code: the escalation stays text in the check run, for
+a maintainer to hand to Claude. `mode: file` reviews a diff file with no GitHub API;
+this repository's CI uses it as a smoke test.
+
 ## Configuration: open a JSON, never touch the code
 
 | File | What it decides |
@@ -372,8 +415,9 @@ removing a floor would take one line. So:
 
 - a project `policy.json` is an overlay that can only **tighten**: add detectors and
   rules, raise floors, use a stricter threshold on the same check, lower limits and
-  parallelism. Anything else is ignored with a note naming the file and the JSON
-  pointer;
+  parallelism, make a CI conclusion more severe (a lane's `ci`, `escalation.ci`, the
+  two classes of `ci`). Anything else is ignored with a note naming the file and the
+  JSON pointer;
 - a project `calibration.json` is ignored: a steep calibration could squash every
   probability to zero;
 - a project `router.json` can only turn the effort router off (`"enabled": false`) or

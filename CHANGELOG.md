@@ -3,6 +3,24 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+### Added
+
+- The GitHub Action (`action.yml`, `examples/workflows/`): a two-phase review of pull
+  requests that never runs a fork's code next to your secrets, and always publishes a
+  completed `jev-review` check run. The reviewed diff comes from the API for the two
+  SHAs; the first phase's artifact is only a cross-check. A backend that is down or not
+  configured gives `neutral`; anything the pull request's author controls or can break
+  gives `failure`. `mode: file` reviews a diff file, and this repository's CI runs it on
+  GitHub's runner as a smoke test.
+
+### Changed
+
+- A project's `policy.json` can make a lane's CI conclusion more severe (a SECURITY
+  REVIEW as `failure`, to stop merges), as it already could for `escalation.ci` and the
+  two classes of `ci`. A milder one is still ignored with a note.
+
 ## 0.3.0 — 2026-09-28
 
 Review on demand, from Claude or from you, without leaving the sandbox's rules behind.
