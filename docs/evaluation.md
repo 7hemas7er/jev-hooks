@@ -77,7 +77,12 @@ hundredths between two texts are noise.
   the cautious end; the step to take along the frontier is the user's choice.
 
 All on rizzo-flow serving Spark-X2.5-4B BF16 on a DGX Spark, profile
-`spark-bf16-2026-09`, uncalibrated.
+`spark-bf16-2026-09`, uncalibrated, except one comparison:
+
+- **CLM-8B** on the reviewer's dev set and the router's dev set
+  (`2026-09-29-clm-*`), with the same 44 wordings and 7 router questions: it separates
+  far worse than rizzo, and two review questions point the wrong way. No text or
+  threshold was chosen on it, and the holdout sets were not used.
 
 ## Calibration (not done yet)
 

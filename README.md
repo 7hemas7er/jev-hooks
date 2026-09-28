@@ -779,16 +779,25 @@ prefer a local rizzo. The prompt is never written to a log.
   plugin's `router.json` applies, with a note. A `router.json` of yours that is there
   but cannot be read keeps the router off too, with a note, until it can be read.
 
-### Not measured
+### Measured, not fitted
 
-The router's questions have no bench: only their latency is measured. Its thresholds
-are **not fitted**, and they compare calibrated probabilities. On the Spark profile, and
-on other rizzo builds, a choice's probabilities are tempered with t = 3, so
-`min_top_probability` 0.3 on the nine-option `task_kind` needs a raw top probability of
-about 0.83 when the rest is spread over the other eight options. The router will often
-leave the effort alone: the safe side, and not measured either. The debug log prints
-every classification, so the thresholds can be tuned on your own prompts, in your
-`router.json`.
+The router's questions have their own bench: 120 labelled prompts to choose on
+(`bench/router-dev.jsonl`) and 120 written afterwards to check
+(`bench/router-holdout.jsonl`), measured on the Spark with
+`scripts/measure-router.ts`. On the holdout set:
+
+- `task_kind` is right 84% of the time; `has_error_evidence` (AUROC 0.998) and
+  `risky_irreversible` (0.982) separate well; `underspecified` does not (0.54), and
+  mostly acts as a floor at medium; `scope` is right 53% of the time, 80% within one
+  level.
+- End to end, from a session at xhigh the router went below the labelled effort on
+  1 prompt in 110 and saved 90 of the 177 steps the labels allow; from a session at
+  high, 8 in 110 and 52 of 80.
+
+The thresholds were set by hand and checked on these sets, not fitted. The router
+often leaves the effort alone, which is the safe side. The debug log prints every
+classification, and `measure-router.ts --replay` shows what another `router.json`
+would have chosen on the same answers without asking the backend again.
 
 ## The measured bench
 
@@ -961,15 +970,18 @@ not fire on its own repository and GitHub's push protection stays quiet.
   `only_models`, and `turn.start` carried the prompt's text. The classification took
   about 0.7 s through Tailscale; the first request of the session took longer than
   `timeout_ms` and left that turn as it was. `CLAUDE_EFFORT` in a Bash command shows
-  the session's effort, not the one the router sets for a request. Not verified yet:
-  the Fable 5.1 id, a prompt typed in the interactive composer, a stored sensitive key
-  reaching `options`, a broken module leaving the commit hook working, and Esc during
-  the wait.
+  the session's effort, not the one the router sets for a request. Later sessions
+  checked the `claude-fable-5-1` id and a prompt typed in the interactive composer.
+  On 2.1.284 a copy with a broken module (`on('turn.stepX', …)`) was refused at load
+  ("hooks module … failed to load" in the debug log) while the commit hook of the same
+  plugin still fired and denied a commit. Not verified yet: a stored sensitive key
+  reaching `options`, and Esc during the wait.
 - **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
   is active. The cache guard notices a cleared cache only after the fact: two turns
   that each paid for the whole context again.
-- **The router is not measured.** Its questions have no bench and its thresholds are
-  not fitted ([Not measured](#not-measured)).
+- **The router's thresholds are not fitted.** Its questions are measured on 240
+  labelled prompts, but the thresholds were set by hand, and `underspecified` does not
+  separate ([Measured, not fitted](#measured-not-fitted)).
 - **Platforms.** Developed on Linux; CI runs Node 22.18 and 24 on Ubuntu. Windows is
   untested (the hook launcher is a bash script; the router needs no bash, but it has
   not been tested there either).
