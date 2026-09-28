@@ -368,3 +368,61 @@ holdout set, measured once (`results/2026-09-28-holdout-i_expected`, where the
 reviewer is there not to miss a weakened test, so `checks.json` kept its text. The
 holdout rows it missed were not opened, so that the set stays usable for the next
 check.
+
+## `router-dev.jsonl`: prompts for the effort router
+
+The router's counterpart of `dev.jsonl`: 120 prompts as they reach Claude Code from the
+composer, about half in Italian and half in English, measured with
+`scripts/measure-router.ts` (below). Each row has the prompt text and one label per
+question of `config/router.json`, plus `effort`:
+
+```json
+{"id": "o-it-drop-table", "language": "it", "text": "…", "labels": {"task_kind": "ops", "scope": 0, "has_error_evidence": false, "risky_irreversible": true, "underspecified": false, "multi_deliverable": false, "explicit_depth": "quick", "effort": "high"}}
+```
+
+The question labels follow the criteria of `router.json` literally. `effort` is the
+lowest level at which Opus 5.5 or Fable 5.1 still does the job well, judged from the
+prompt alone:
+
+- **low**: nothing to explore beyond what the prompt names, and a wrong first try costs
+  one retry: a concept question, a named one-line edit, a routine git command.
+- **medium**: bounded work that needs a few files read or one debugging loop: how a
+  module works, a bug with its error in a known place, a small feature in one or two
+  files, a review of one file.
+- **high**: several files or an unclear cause: a feature across modules, a bug
+  without a clear location, a refactor of a module, a review of a change set, and any
+  request that would act on a real system irreversibly (whatever else it asks).
+- **xhigh**: system-wide design, hard debugging (races, memory, performance), large
+  migrations, security audits, or a hard problem where the user asks for care.
+
+A request for speed ("al volo", "quick") lowers the label unless the request is
+risky. Confirmations (`continue`) have `effort: null`: their effort is the turn
+before's, which a single prompt does not show.
+
+The labels are one person's judgement, written by the maintainers together with the
+router's rules: this set is for choosing thresholds and rules, not for claiming how
+well the router does. That needs a holdout set written by someone who has not seen the
+rules.
+
+### Measuring and replaying
+
+```bash
+node scripts/measure-router.ts --out bench/results/YYYY-MM-DD-router-dev --url URL --date YYYY-MM-DD
+node scripts/measure-router.ts --replay bench/results/YYYY-MM-DD-router-dev --config /tmp/trial-router.json
+```
+
+A measurement sends one request per prompt, built by `prepareRequest` with the
+plugin's `router.json` (or `--config`, applied as the user layer) and read back by
+`parseClassification`, as in the function hook; it writes `raw.jsonl` (the answers as
+they came) and `report.md`. A replay recomputes the report from `raw.jsonl` with the
+configuration given now, without the network: thresholds, base steps, adjustments and
+floors can change, the question texts cannot (a replay warns when a hash differs from
+the one the report recorded). The key follows the CLI's rule (`JEV_HOOKS_URL` +
+`JEV_HOOKS_KEY`), never a flag.
+
+The report gives, per question, how the answers match the labels (AUROC and the rate
+at each configured threshold for the nouls, accuracy and a confusion table for choices
+and scores), the latency against `timeout_ms`, and end to end, for a session at
+`xhigh` and at `high`, how often the chosen effort falls **under** the label (the
+risk), matches it, or stays **over** it (a missed saving). The outputs hold ids,
+numbers and hashes: no prompt text, no host, no key.
