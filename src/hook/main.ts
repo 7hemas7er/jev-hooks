@@ -10,7 +10,11 @@
 //   the rest. An allow would approve the whole Bash command, including whatever follows
 //   the commit;
 // - post-commit (PostToolUse on Bash): records whether the reviewed commit
-//   really happened, material for the 0.2 calibration fit.
+//   really happened, material for the 0.2 calibration fit;
+// - expand (UserPromptExpansion) and skill (PreToolUse on Skill): /jev-review and
+//   /jev-status, served here so that they run outside the sandbox (on-demand.ts);
+// - guard (PreToolUse on Edit and Write): asks before Claude edits the project's
+//   reviewer rules in .jev-hooks/.
 //
 // Command hooks run outside the sandbox and reach the LAN, which is why the review
 // lives here and not in a git pre-commit hook. On the same repo that Claude can write
@@ -42,6 +46,8 @@ import { loadConfig, loadMaskMap, describeModifiedRules, readKeyFile, displayPat
 import type { LoadedConfig } from '../node/file-config.ts'
 import { git, readSource, repoRoot } from '../node/git.ts'
 import { nodeClock, nodeTransport } from '../node/transport.ts'
+import { onDemandCommand, reviewContext, statusText } from './on-demand.ts'
+import type { OnDemandRun } from './on-demand.ts'
 
 // The hook's input is read with a cap.
 export const STDIN_CAP = 1024 * 1024
@@ -75,11 +81,11 @@ function severity(u: HookOutput): number {
 // The decision's JSON. permissionDecision always sits inside hookSpecificOutput with
 // hookEventName. Every text goes through guardrail's mask map: its masking does not
 // cover what other plugins write.
-function emit(u: HookOutput, ctx: HookContext, maskMap: readonly MaskPair[]): void {
+function emit(u: HookOutput, ctx: HookContext, maskMap: readonly MaskPair[], eventName: string = 'PreToolUse'): void {
   const m = (s: string): string => (maskMap.length > 0 ? mask(s, maskMap) : s)
   const out: Record<string, unknown> = {}
   if (u.decision !== undefined || u.context !== undefined) {
-    const h: Record<string, unknown> = { hookEventName: 'PreToolUse' }
+    const h: Record<string, unknown> = { hookEventName: eventName }
     if (u.decision !== undefined) {
       h.permissionDecision = u.decision
       h.permissionDecisionReason = m(u.reason ?? PREFIX.trim())
@@ -520,6 +526,65 @@ function postCommit(ctx: HookContext, dataDir: string): void {
   }
 }
 
+// ─── expand and skill events ──────────────────────────────────────────────────
+
+// The same review or probe on both routes, as context and never as a decision: a
+// block (decision on UserPromptExpansion, deny on Skill) would hide the error from the
+// skill, which is there to explain it.
+async function onDemand(ctx: HookContext, dataDir: string, start: number, event: 'expand' | 'skill'): Promise<void> {
+  const input = parseInput(ctx.stdin)
+  if (!input) return
+  let name: unknown
+  let args: unknown
+  if (event === 'expand') {
+    name = input.command_name
+    args = input.command_args
+  } else {
+    if (input.tool_name !== 'Skill') return
+    const ti = input.tool_input as { skill?: unknown; args?: unknown } | null | undefined
+    name = ti?.skill
+    args = ti?.args
+  }
+  const command = onDemandCommand(name)
+  if (command === undefined) return
+  const run: OnDemandRun = {
+    env: ctx.env, pluginRoot: ctx.pluginRoot, dataDir, start,
+    cwd: typeof input.cwd === 'string' && input.cwd !== '' ? input.cwd : process.cwd(),
+    session: typeof input.session_id === 'string' && input.session_id !== '' ? input.session_id : 'unknown',
+    ...(ctx.transport ? { transport: ctx.transport } : {}),
+  }
+  const text = typeof args === 'string' ? args : ''
+  const context = command === 'review' ? await reviewContext(run, text) : await statusText(run, text)
+  emit({ context, messages: [] }, ctx, loadMaskMap(ctx.env).maskMap ?? [], event === 'expand' ? 'UserPromptExpansion' : 'PreToolUse')
+}
+
+// ─── guard event ──────────────────────────────────────────────────────────────
+
+// A path with a .jev-hooks segment, in any case: on a case-insensitive file system
+// .JEV-HOOKS/ is the same directory.
+const RE_RULES_DIR = /(^|[\\/])\.jev-hooks([\\/]|$)/i
+
+// Not the main protection: sed or cat > through Bash write .jev-hooks/ as well, and the
+// sandbox lets Claude write in the working directory. The rules of file-config.ts are
+// (HEAD rules and ask when .jev-hooks/ differs; the project can only tighten), plus the
+// reviewer_rules detector. This hook only stops Claude from loosening them in silence
+// with its own editing tools. A link to .jev-hooks/ under another name is not followed:
+// making one takes Bash, which can write the rules directly anyway.
+function guard(ctx: HookContext): void {
+  if (ctx.env.JEV_HOOKS_DISABLE === '1') return
+  const reason = `${PREFIX}change to the reviewer rules in .jev-hooks/ (thresholds, questions or profiles): confirm it yourself`
+  // an input over the cap cannot be parsed: a Write of a huge file must not pass for that
+  if (ctx.stdinTruncated) {
+    if (/\.jev-hooks/i.test(ctx.stdin)) emit({ decision: 'ask', reason, messages: [] }, ctx, [])
+    return
+  }
+  const input = parseInput(ctx.stdin)
+  if (!input || (input.tool_name !== 'Edit' && input.tool_name !== 'Write')) return
+  const ti = input.tool_input as { file_path?: unknown } | null | undefined
+  if (typeof ti?.file_path !== 'string') return
+  if (RE_RULES_DIR.test(ti.file_path)) emit({ decision: 'ask', reason, messages: [] }, ctx, [])
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 export async function main(event: string, ctx: HookContext): Promise<void> {
@@ -528,6 +593,8 @@ export async function main(event: string, ctx: HookContext): Promise<void> {
   try {
     if (event === 'commit') await commit(ctx, stateDir, start)
     else if (event === 'post-commit') postCommit(ctx, stateDir)
+    else if (event === 'expand' || event === 'skill') await onDemand(ctx, stateDir, start, event)
+    else if (event === 'guard') guard(ctx)
     else ctx.writeErr(`[jev-hooks] unhandled event: ${safeText(event, 40)}\n`)
   } catch (err) {
     // A bug in the hook never stops the work: no decision, one line on stderr and in

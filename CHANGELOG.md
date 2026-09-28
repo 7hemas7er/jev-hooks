@@ -3,6 +3,19 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+### Added
+
+- `/jev-review` and `/jev-status`: a review on demand and a check of the backend, as
+  skills. A command hook runs them outside Claude's sandbox, both when you type the
+  command (`UserPromptExpansion`) and when Claude invokes the skill (`PreToolUse` on
+  Skill), and hands the result to the skill as a data block. The arguments (`--staged`,
+  `--working`, a git reference, a `.diff` or `.patch` file inside the repo) are
+  validated and never echoed back; neither skill ever blocks.
+- A guard on `.jev-hooks/`: an Edit or Write by Claude inside the project's reviewer
+  rules asks you first, in any letter case and at any depth.
+
 ## 0.2.2 — 2026-09-28
 
 One more false alarm of the commit reviewer, found while committing its own fix.

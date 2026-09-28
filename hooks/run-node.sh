@@ -22,6 +22,16 @@ case "$event" in
   commit)
     input="$(cat)"
     case "$input" in *commit*) ;; *) exit 0 ;; esac ;;
+  skill)
+    # the Skill tool runs every skill: only ours start Node
+    input="$(cat)"
+    case "$input" in *jev-review*|*jev-status*) ;; *) exit 0 ;; esac ;;
+  guard)
+    # every Edit and Write: Node parses the path only when the input names the rules
+    # directory (in any case, as on a case-insensitive file system). No "if" in
+    # hooks.json: a pattern that stopped matching would turn the guard off in silence.
+    input="$(cat)"
+    case "$input" in *[.][jJ][eE][vV]-[hH][oO][oO][kK][sS]*) ;; *) exit 0 ;; esac ;;
   post-commit)
     # one file per session: if the directory is empty there is nothing to record
     [ -n "$(ls -A "${CLAUDE_PLUGIN_DATA:-/nonexistent}/pending" 2>/dev/null)" ] || exit 0

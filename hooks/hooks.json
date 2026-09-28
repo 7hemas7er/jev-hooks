@@ -1,13 +1,21 @@
 {
-  "description": "jev-hooks: review of the diff before Claude's git commit (command hook, outside the sandbox), a record of whether the reviewed commit happened, and the per-turn effort router (register.ts, a function hook, early access: off unless the effort_router option is true). A hook is registered here only when the script it runs exists.",
+  "description": "jev-hooks: review of the diff before Claude's git commit and for /jev-review and /jev-status (command hooks, outside the sandbox), a guard on edits to the project's reviewer rules, a record of whether the reviewed commit happened, and the per-turn effort router (register.ts, a function hook, early access: off unless the effort_router option is true). A hook is registered here only when the script it runs exists.",
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [ { "type": "command", "if": "Bash(git *)", "command": "bash",
-          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "commit"], "timeout": 180, "statusMessage": "jev-review: reviewing the diff" } ] }
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "commit"], "timeout": 180, "statusMessage": "jev-review: reviewing the diff" } ] },
+      { "matcher": "Skill", "hooks": [ { "type": "command", "command": "bash",
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "skill"], "timeout": 180, "statusMessage": "jev-review: reviewing the diff" } ] },
+      { "matcher": "Edit|Write", "hooks": [ { "type": "command", "command": "bash",
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "guard"], "timeout": 10 } ] }
     ],
     "PostToolUse": [
       { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash",
           "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "post-commit"], "timeout": 15 } ] }
+    ],
+    "UserPromptExpansion": [
+      { "matcher": "^(jev-hooks:)?jev-(review|status)$", "hooks": [ { "type": "command", "command": "bash",
+          "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh", "expand"], "timeout": 180, "statusMessage": "jev-review: reviewing the diff" } ] }
     ]
   },
   "modules": ["./register.ts"]

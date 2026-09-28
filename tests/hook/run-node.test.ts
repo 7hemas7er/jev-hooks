@@ -306,3 +306,23 @@ test('commit: a git command that is not a commit starts no Node', () => {
   const r = run(w, 'commit', JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git status' } }))
   assert.deepEqual([r.status, r.out, r.err, r.log], [0, '', '', []])
 })
+
+test('skill: another skill starts no Node; ours does', () => {
+  const w = world()
+  const found = fakeNode(w, nvm(w, 'v24.0.0'), '24.0.0')
+  const other = run(w, 'skill', JSON.stringify({ tool_name: 'Skill', tool_input: { skill: 'code-review' } }))
+  assert.deepEqual([other.status, other.out, other.err, other.log], [0, '', '', []])
+  const ours = run(w, 'skill', JSON.stringify({ tool_name: 'Skill', tool_input: { skill: 'jev-hooks:jev-review' } }))
+  assert.equal(ours.ran, found)
+})
+
+test('guard: an edit that does not name .jev-hooks starts no Node; one that does, in any case, does', () => {
+  const w = world()
+  const found = fakeNode(w, nvm(w, 'v24.0.0'), '24.0.0')
+  const other = run(w, 'guard', JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: 'src/app.ts' } }))
+  assert.deepEqual([other.status, other.out, other.err, other.log], [0, '', '', []])
+  for (const p of ['.jev-hooks/policy.json', 'sub/.JEV-Hooks/checks.json']) {
+    const r = run(w, 'guard', JSON.stringify({ tool_name: 'Write', tool_input: { file_path: p } }))
+    assert.equal(r.ran, found, p)
+  }
+})
