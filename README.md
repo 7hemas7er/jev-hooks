@@ -18,9 +18,10 @@ turns the answers into the effort of that turn, never above the one your session
 for. A rename does not need the reasoning a design question needs.
 
 > **Status: public preview.** The commit reviewer and the `jev-review` CLI work. The
-> effort router is built, opt-in and early access, and has not yet run in a live Claude
-> Code session: it runs on Claude Code's function hooks, and so far only Claude Code's
-> own test kit and a fake engine have driven it. About 850 offline tests cover the
+> effort router is built, opt-in and early access: it runs on Claude Code's function
+> hooks, and one live run on Claude Code 2.1.283 has shown the effort it sets reaching
+> the API request and the prompt cache surviving the change (README → Limitations).
+> About 850 offline tests cover the
 > three. The GitHub Action and the `/jev-review` and `/jev-status` skills are designed
 > but not built yet. The reviewer's thresholds come from a small synthetic bench (below)
 > and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
@@ -60,7 +61,7 @@ Three question types, as in Jev:
 | Question bench and policy simulator | **works** | `bench/`, `scripts/measure-questions.ts`, `scripts/simulate-policy.ts` |
 | `/jev-review` and `/jev-status` skills | planned | Review on demand, served by a hook so it runs outside the sandbox |
 | Guard on `.jev-hooks/` edits | planned | Asks before Claude edits the project's reviewer rules |
-| Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; not yet run in a live Claude Code session | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
+| Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
 | GitHub Action | planned | Two-phase review of pull requests, safe for forks |
 
 ## How it works
@@ -848,15 +849,21 @@ not fire on its own repository and GitHub's push protection stays quiet.
 - **The router rests on early-access APIs.** Function hooks can change between Claude
   Code releases without notice; the router was written and tested against 2.1.283, in
   Claude Code's own test kit and on a fake engine under Node.
-- **No live session has run the router yet.** Some of what it relies on rests only on
-  Claude Code 2.1.283's declarations, its test kit and the fake engine: that the effort
-  a function hook sets reaches the API request, and that `e.effort` is present by
-  default; the Fable 5.1 model id that `only_models` matches; that `turn.start`'s text
-  in a live engine equals the text `prompt.submit` saw; that the prompt cache stays
-  warm after a change of effort the router made, with the beta; that a stored
-  sensitive key reaches the module's `options`; that the command hooks and the module
-  load together, and that a broken module does not stop the commit hook; what happens
-  on Esc during the wait.
+- **One live run so far** (2026-09-28, Claude Code 2.1.283, headless `claude -p` on Opus
+  5.5 with the session at `high`, a copy of the plugin that also classifies the `sdk`
+  origin, rizzo through Tailscale). A logging proxy in front of the API showed
+  `output_config.effort` at `low` on both requests of a routed turn, and at `high`
+  with `JEV_HOOKS_ROUTER=0`. After a turn at `low`, the next turn at `high` read
+  90,727 tokens from the prompt cache, the whole previous request, with the
+  per-turn-control beta on. The module loaded next to the command hooks, `e.effort`
+  was there with the session's setting, the `claude-opus-5-5` id matched
+  `only_models`, and `turn.start` carried the prompt's text. The classification took
+  about 0.7 s through Tailscale; the first request of the session took longer than
+  `timeout_ms` and left that turn as it was. `CLAUDE_EFFORT` in a Bash command shows
+  the session's effort, not the one the router sets for a request. Not verified yet:
+  the Fable 5.1 id, a prompt typed in the interactive composer, a stored sensitive key
+  reaching `options`, a broken module leaving the commit hook working, and Esc during
+  the wait.
 - **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
   is active. The cache guard notices a cleared cache only after the fact: two turns
   that each paid for the whole context again.
