@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- The escalation threshold of `weakens_tests` goes from 0.20 to 0.50. In live use the
+  question fired on every commit that added or tightened tests, at 0.25 to 0.86. On
+  the bench it still catches every positive, and its false alarms on the holdout set
+  drop from 9 to 4 of 109; diffs without a problem that send a question to Claude go
+  from 12 to 11 of 34.
+
 ### Fixed
 
 - A deny of the commit hook on `git add … && git commit` says that nothing in the

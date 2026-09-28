@@ -712,7 +712,7 @@ are in `bench/results/`.
 | hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.10 → escalate | 0.78 (7/9) · 0.028 (3/109) | 0.91 (10/11) · 0.027 (3/110) |
 | injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
 | touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
-| weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.20 → escalate | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.083 (9/109) |
+| weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.037 (4/109) |
 | breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.057 (6/105) |
 | data_migration | choice, 1 − P(none) | 1.000 | 0.992 | ≥ 0.20, note | 1.00 (7/7) · 0.027 (3/111) | 1.00 (10/10) · 0.072 (8/111) |
 | debug_leftovers | noul | 0.994 | 0.966 | ≥ 0.40, note | 0.88 (7/8) · 0.027 (3/110) | 0.91 (10/11) · 0.036 (4/110) |
@@ -725,7 +725,7 @@ FPR is its false-alarm rate on diffs without that problem. Thresholds were chose
 dev set to stay near 3% false alarms, then checked on the holdout set, where false
 alarms rose to 3–8% per question: that gap is the honest cost of choosing on a small
 set. Seen per commit, on the holdout set's 34 diffs with no labelled problem, none
-reached BLOCK or SECURITY REVIEW and 12 (35%) sent at least one question to Claude; on
+reached BLOCK or SECURITY REVIEW and 11 (32%) sent at least one question to Claude; on
 the dev set, 4 of 28 (14%).
 
 **Why the model never blocks on its own (policy v2).** With the first policy, where

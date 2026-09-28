@@ -208,7 +208,7 @@ export const DEFAULT_CALIBRATION = {
         "hardcoded_secret": 0.1,
         "injection_risk": 0.99,
         "touches_auth": 0.7,
-        "weakens_tests": 0.2,
+        "weakens_tests": 0.5,
         "adds_tests": 0.3,
         "breaks_api": 0.9,
         "data_migration": 0.2,
