@@ -441,6 +441,14 @@ test('coverage: unreviewable files, omitted files, a truncated diff and an incom
   ])
   assert.ok(items[2].question.includes('truncated'))
   assert.ok(items[3].question.includes('incomplete'))
+  assert.match(items[1].question, /^Coverage: 1 file omitted by the automated reviewer \(beyond the review limits\)\. Review them yourself, or split the change into smaller commits/)
+
+  // eighteen omitted files, as in a whole feature committed at once: the question says
+  // how many of them the item lists
+  const many = plan({ omitted: Array.from({ length: 18 }, (_, i) => ({ path: `src/f${i}.ts`, reason: 'beyond the chunk limit' })) })
+  const [big] = escalation({}, CHECKS, S, NO_HIT, many, POLICY)
+  assert.equal(big.files.length, POLICY.escalation.max_files)
+  assert.match(big.question, new RegExp(`^Coverage: 18 files omitted by the automated reviewer \\(beyond the review limits\\) \\(${POLICY.escalation.max_files} listed\\)\\. `))
 })
 
 // ─── prompt ─────────────────────────────────────────────────────────────────

@@ -400,11 +400,17 @@ function coverageItems(ctx: EscalationContext): EscalationItemWithLines[] {
       ...itemFiles(ctx, plan.unreviewable, undefined, false),
     })
   }
+  // A large change (a whole feature in one commit) always ends up here in the hook:
+  // reading five files of eighteen does not cover it, smaller commits do.
   if (plan.omitted.length) {
+    const n = plan.omitted.length
+    const files = itemFiles(ctx, plan.omitted.map((o) => o.path), undefined, false)
+    const listed = files.files.length < n ? ` (${files.files.length} listed)` : ''
     out.push({
       reason: 'coverage',
-      question: `Coverage: ${plan.omitted.length} ${plan.omitted.length === 1 ? 'file' : 'files'} omitted by the automated reviewer (beyond the review limits). Review them yourself.`,
-      ...itemFiles(ctx, plan.omitted.map((o) => o.path), undefined, false),
+      question: `Coverage: ${n} ${n === 1 ? 'file' : 'files'} omitted by the automated reviewer (beyond the review limits)${listed}. `
+        + 'Review them yourself, or split the change into smaller commits that the reviewer can cover in full.',
+      ...files,
     })
   }
   if (extra.truncated) {

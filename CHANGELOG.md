@@ -19,6 +19,8 @@ a release is a separate `chore(release): X.Y.Z` commit.
   rule has the `unless docs_only ≥ 0.50` that `adds_tests` already had. Two such
   commits scored 0.25 and 0.28 in live use; the bench numbers are the same with and
   without it.
+- The coverage item for files beyond the review limits says how many of them it lists,
+  and suggests smaller commits, which the reviewer covers in full.
 
 ## 0.2.0 — 2026-09-28
 
