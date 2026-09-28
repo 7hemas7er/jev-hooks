@@ -37,8 +37,9 @@ jobs:
           CONCLUSION: ${{ steps.review.outputs.conclusion }}
         run: test "$VERDICT" = BLOCK && test "$CONCLUSION" = failure
   # tsc as a development tool, never at run time: the pure core only. hooks/register.ts
-  # imports module 'claude-code', whose declarations /plugin-types writes on a developer's
-  # machine and which are never committed (AGENTS.md, rule 6).
+  # imports module 'claude-code', whose declarations /plugin-types writes and which are
+  # never committed (AGENTS.md, rule 6): the weekly compat job, which installs Claude
+  # Code, generates them and checks register.ts too.
   types:
     runs-on: ubuntu-latest
     steps:

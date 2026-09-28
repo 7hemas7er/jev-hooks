@@ -15,8 +15,9 @@ a release is a separate `chore(release): X.Y.Z` commit.
   `docs/evaluation.md` (how questions, thresholds and calibration are measured, and
   what is still missing).
 - A weekly CI job that installs the pinned and the latest Claude Code, validates the
-  plugin and runs `tests-cc/` in its test kit, opening an issue when one fails; and a
-  type-check of the core with TypeScript 7.
+  plugin, runs `tests-cc/` in its test kit and type-checks `hooks/register.ts` against
+  that release's `/plugin-types`, opening an issue when one fails; and a type-check of
+  the core with TypeScript 7 on every push.
 
 ## 0.4.0 — 2026-09-28
 

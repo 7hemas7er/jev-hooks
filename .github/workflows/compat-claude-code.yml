@@ -2,8 +2,10 @@
 # change in any Claude Code release, and nothing in this repo would notice until a
 # user's session broke. Every week (and on demand) this job installs the version the
 # plugin was last verified on and the latest one, validates the plugin and the
-# marketplace, and runs tests-cc/ in Claude Code's own test kit. None of it needs
-# credentials. A failure on latest opens an issue, once.
+# marketplace, runs tests-cc/ in Claude Code's own test kit, and type-checks
+# hooks/register.ts against the declarations that release writes with /plugin-types
+# (never committed: AGENTS.md, rule 6). None of it needs credentials: /plugin-types is
+# a local command and runs headless without a model. A failure opens an issue, once.
 name: compat-claude-code
 on:
   schedule:
@@ -35,6 +37,11 @@ jobs:
       - run: claude plugin validate .claude-plugin/plugin.json
       - run: claude plugin validate .
       - run: node scripts/test-cc.ts
+      # /plugin-types exists only while function hooks are enabled
+      - name: Write the plugin API's declarations into .claude/types
+        env: { CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: "1" }
+        run: claude -p "/plugin-types .claude/types"
+      - run: npx --yes -p typescript@7.0.2 tsc -p tsconfig.json
   report:
     needs: compat
     if: failure()
