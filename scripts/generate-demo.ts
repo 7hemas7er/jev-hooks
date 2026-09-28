@@ -5,7 +5,7 @@
 // ignore_values recognizes as fake), so the reviewer does not fire on the repo itself
 // and GitHub's push protection does not stop the push.
 //
-// Usage: node scripts/generate-demo.ts [dir] [--seed N]
+// Usage: node scripts/generate-demo.ts [DIR] [--seed N]   (--help for the details)
 //        without a directory it creates a temporary one and prints it.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -41,17 +41,83 @@ export function generateDemo(dir: string, o: { seed?: number } = {}): Record<str
   return written
 }
 
-const isMain = import.meta.main ?? (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-if (isMain) {
-  const argv = process.argv.slice(2)
-  const k = argv.indexOf('--seed')
-  const seed = k >= 0 ? Number(argv[k + 1]) : undefined
-  if (k >= 0) argv.splice(k, 2)
-  if (seed !== undefined && !Number.isInteger(seed)) {
-    process.stderr.write('generate-demo: --seed wants an integer\n')
-    process.exit(2)
+// ─── Command line ─────────────────────────────────────────────────────────────
+
+const EXIT_OK = 0
+const EXIT_USAGE = 2
+
+export class InputError extends Error {}
+
+export const HELP = `Usage: node scripts/generate-demo.ts [DIR] [--seed N]
+
+  DIR           where to write the demo diffs, created if missing; without it a
+                temporary directory is created and its path is printed
+  --seed N      seed of the composed values, a decimal integer (also --seed=N): the
+                same seed writes the same diffs (default: taken from the clock)
+  -h, --help    this text, and nothing is written
+  --            ends the options: a DIR that starts with "-" goes after it
+
+Writes the templates of examples/demo/ with their placeholders replaced by values
+composed at run time, plus empty.diff. Try them with bin/jev-review.mjs --diff FILE.`
+
+export interface DemoOptions { dir?: string; seed?: number }
+
+// Every usage mistake is an InputError, raised before anything is written: the old
+// parser took any first argument as the directory, so --help or --seed=7 became a
+// directory full of demo diffs in the cwd.
+export function parseArgs(argv: readonly string[], cwd: string): DemoOptions | 'help' {
+  const o: DemoOptions = {}
+  let seeded = false
+  let options = true
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (options && a === '--') {
+      options = false
+      continue
+    }
+    if (options && (a === '--help' || a === '-h')) return 'help'
+    if (options && (a === '--seed' || a.startsWith('--seed='))) {
+      if (seeded) throw new InputError('repeated option: --seed')
+      seeded = true
+      const v = a === '--seed' ? argv[++i] : a.slice('--seed='.length)
+      if (v === undefined) throw new InputError('missing value for --seed')
+      // Number() alone would take "", "0x10" and "1e3" as 0, 16 and 1000
+      const n = Number(v)
+      if (!/^-?\d+$/.test(v) || !Number.isSafeInteger(n)) throw new InputError(`--seed wants an integer, found "${v}"`)
+      o.seed = n
+      continue
+    }
+    if (options && a.startsWith('-')) throw new InputError(`unknown option: ${a}`)
+    if (o.dir !== undefined) throw new InputError(`unexpected argument: ${a}`)
+    o.dir = resolve(cwd, a)
   }
-  const dir = argv[0] !== undefined ? resolve(argv[0]) : mkdtempSync(join(tmpdir(), 'jev-hooks-demo-'))
-  const written = generateDemo(dir, seed !== undefined ? { seed } : {})
-  process.stdout.write(`${dir}\n${Object.keys(written).map((n) => `  ${n}`).join('\n')}\n`)
+  return o
 }
+
+// cwd is a parameter so that the tests resolve a relative DIR inside a temporary
+// directory, never inside the repo they run from.
+export function main(
+  argv: readonly string[], cwd: string = process.cwd(),
+  write: (s: string) => void = (s) => process.stdout.write(s), error: (s: string) => void = (s) => process.stderr.write(s),
+): number {
+  try {
+    const o = parseArgs(argv, cwd)
+    if (o === 'help') {
+      write(`${HELP}\n`)
+      return EXIT_OK
+    }
+    const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'jev-hooks-demo-'))
+    const written = generateDemo(dir, o.seed !== undefined ? { seed: o.seed } : {})
+    write(`${dir}\n${Object.keys(written).map((n) => `  ${n}`).join('\n')}\n`)
+    return EXIT_OK
+  } catch (err) {
+    if (err instanceof InputError) {
+      error(`generate-demo: ${err.message}\n`)
+      return EXIT_USAGE
+    }
+    throw err
+  }
+}
+
+const isMain = import.meta.main ?? (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+if (isMain) process.exitCode = main(process.argv.slice(2))
