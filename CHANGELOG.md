@@ -3,6 +3,88 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+The per-turn effort router, planned since the preview, is built. It is off unless you
+turn it on: a change of effort keeps the prompt cache only on Opus 5.5 or Fable 5.1
+with the per-turn-control beta on the account, and the plugin cannot see the beta. It
+has run in Claude Code's own test kit and on a fake engine, not yet in a live session
+(README → Limitations). The release commit gives this section its version.
+
+### Added
+
+- The effort router (`hooks/register.ts`, a function hook, early access), with its
+  decisions as pure functions in `src/core/router.ts`. Before each prompt you type, it
+  asks the `/v1/systemone` backend the seven questions of `config/router.json` and
+  lowers that turn's effort from the session's, never above it: only for prompts
+  typed in the composer and only on the models of `only_models`; it never touches
+  subagents or the model. The classification applies only to the turn whose text is
+  the prompt's, so a prompt blocked beneath or folded into a running turn changes
+  nothing. The prompt waits for the answer, `timeout_ms` (1.5 s) at most unless
+  another hook refuses Claude Code's timer (then up to Claude Code's 30 s for the
+  fetch). A failure leaves the turn as it is with one transcript line, and the
+  same line again goes to the debug log; a prompt the router does not send by design
+  (its origin, a `/` or `!`, a busy backend, a model outside `only_models`) is noted
+  in the debug log only. A failed request's line gives a fixed reason or an error
+  code, never the error's text, which after a redirect quotes an address the backend
+  chose. See README → Effort router.
+- Towards a non-local backend the prompt is redacted and masked on its whole text,
+  then clipped. A guardrail mask map that cannot be read or parsed, or cannot be
+  looked for (neither `HOME` nor `GUARDRAIL_MASK_MAP` set), stops every request with
+  one transcript line. Claude Code follows redirects for the router, and a 307 or 308
+  sends the prompt again wherever it points: the backend, or its proxy, must answer
+  `POST /v1/systemone` itself.
+- Options `effort_router` (default `false`), `router_url` (empty: `review_url`, so the
+  router shares the reviewer's instance) and `router_api_key` (sensitive; empty:
+  `api_key` or the key file, only when `router_url` is empty or has `review_url`'s
+  scheme and host, whatever the port, so a key given for TypeSafe never goes to a LAN
+  router over plain http). The router reads no key from the environment, and has no
+  `TYPESAFE_*` fallback.
+- A cache guard (`cache_guard` in `router.json`): after two effort changes in a row
+  that the prompt cache did not survive, the router turns itself off for the session
+  and says why, since without the beta each change empties the cache. A turn is judged
+  only when it started soon enough after the previous request's turn for the cache to
+  be alive, measured between turn starts: a queued prompt can wait long for its turn.
+- Router configuration layers: `~/.config/jev-hooks/router.json` replaces the plugin's
+  whole, and the user's `calibration.json` applies to it; its `"enabled": false` keeps
+  the router off even when another field is invalid, as long as the file is still JSON
+  (one that does not parse says nothing, and the plugin's applies). A user
+  `router.json` that is there but cannot be read keeps the router off, with one note,
+  until it can be read, since it may hold that switch. A project
+  `.jev-hooks/router.json` can only turn the router off or lower its cap; it is read at
+  the checkout's top level, where the reviewer reads `.jev-hooks/`, found from the
+  session's directory even when another plugin refuses `$.session.repo`, and in a
+  linked worktree the main working tree's is read too. Kill switches `JEV_HOOKS_ROUTER=0` (the
+  router alone) and `JEV_HOOKS_DISABLE=1` (the whole plugin), read at every prompt.
+- Tests for the router: its decisions under Node and in the strict `node:vm` context,
+  `hooks/register.ts` driven through whole sessions on a fake engine, and `tests-cc/`
+  in Claude Code's own test kit, run by `node scripts/test-cc.ts` (a local check: it
+  needs the `claude` CLI).
+- `scripts/validate-manifest.ts` checks the `modules` entry of `hooks/hooks.json`: a
+  `.ts` file that exists, named relative to `hooks/` and inside the plugin's folder.
+
+### Changed
+
+- `router.json`: `only_origins` is `["composer"]`, and every entry must be one of the
+  16 prompt origins of Claude Code 2.1.283. The earlier `"human"` is now a validation
+  error: no prompt carries it, so it would have skipped every prompt. `cache_guard` is
+  a new required field. A user `router.json` written for 0.1.1 is therefore invalid:
+  the router says so once and uses the plugin's file until you copy the new one, or
+  stays off if your file says `"enabled": false`. No hook read that file before, so
+  nothing that worked stops working.
+- CI: `actions/checkout` v7.0.1 and `actions/setup-node` v7.0.0, pinned by SHA. Both
+  run on Node 24; the v4 pins ran on the deprecated Node 20 runtime. The Node versions
+  the tests run on are unchanged (22.18.0 and 24).
+
+### Fixed
+
+- `scripts/generate-demo.ts` reads its arguments strictly. `--help` and `-h` print the
+  usage and write nothing (they used to create a directory named `--help` and write
+  the demo into it); `--seed=N` works like `--seed N` (it used to become a directory
+  name, with a random seed); the seed must be a decimal integer (`0x10`, `1e3` and an
+  empty value were accepted); an unknown option or a second directory exits 2 with one
+  line.
+
 ## 0.1.1 — 2026-09-27
 
 A version bump so that `/plugin update` picks up the Node fix below: Claude Code

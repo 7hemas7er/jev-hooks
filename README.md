@@ -12,11 +12,18 @@ split into chunks, a `/v1/systemone` backend answers the questions in
 **SECURITY REVIEW**, **NITS** or **MERGE**. Critical findings go back to Claude as
 precise points to check, never as a verdict to obey.
 
-> **Status: 0.1.0-dev, first public preview.** The commit reviewer and the
-> `jev-review` CLI work and are covered by about 650 offline tests. The effort router,
-> the GitHub Action and the `/jev-review` and `/jev-status` skills are designed but not
-> built yet. The thresholds come from a small synthetic bench (below): treat verdicts
-> as a second opinion, not as a gate.
+The same plugin holds an **effort router**, off unless you turn it on: the same
+backend answers seven questions about each prompt you type, and `config/router.json`
+turns the answers into the effort of that turn, never above the one your session asks
+for. A rename does not need the reasoning a design question needs.
+
+> **Status: public preview.** The commit reviewer and the `jev-review` CLI work. The
+> effort router is built, opt-in and early access, and has not yet run in a live Claude
+> Code session: it runs on Claude Code's function hooks, and so far only Claude Code's
+> own test kit and a fake engine have driven it. About 850 offline tests cover the
+> three. The GitHub Action and the `/jev-review` and `/jev-status` skills are designed
+> but not built yet. The reviewer's thresholds come from a small synthetic bench (below)
+> and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
 
 ## Why typed decisions
 
@@ -53,7 +60,7 @@ Three question types, as in Jev:
 | Question bench and policy simulator | **works** | `bench/`, `scripts/measure-questions.ts`, `scripts/simulate-policy.ts` |
 | `/jev-review` and `/jev-status` skills | planned | Review on demand, served by a hook so it runs outside the sandbox |
 | Guard on `.jev-hooks/` edits | planned | Asks before Claude edits the project's reviewer rules |
-| Effort router (function hook) | planned, off by default | Lowers the per-turn effort from observable features of your prompt (`config/router.json`) |
+| Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; not yet run in a live Claude Code session | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
 | GitHub Action | planned | Two-phase review of pull requests, safe for forks |
 
 ## How it works
@@ -150,8 +157,9 @@ against 13 for Q8_0. Measured on that machine:
 Things to know before you expose it:
 
 - **Requests are serialized** (one lock), and a request the client abandons keeps
-  running. jev-hooks never retries a timeout, and the planned router gets its own
-  instance (for example review on port 8017, router on 8019).
+  running. jev-hooks never retries a timeout. The effort router shares the reviewer's
+  instance unless you give it another one: during a review it times out and leaves the
+  turn's effort alone (see [Which backend](#which-backend)).
 - **`--ctx` is per question** (state plus question). Chunks of about 2000 tokens stay
   far below the default 8192; an overflow comes back as a 422 that jev-hooks recognizes
   and answers by re-splitting.
@@ -159,10 +167,13 @@ Things to know before you expose it:
   `/v1/models`; `/v1/decisions`, `/health`, `/docs` and `/playground` stay open, and
   there is no TLS. Bind it to `127.0.0.1` and put a reverse proxy in front that lets
   through only `POST /v1/systemone` and `GET /v1/models`, reachable over your LAN or
-  Tailscale.
+  Tailscale. The proxy must answer them itself, never with a redirect (no
+  http-to-https or canonical-host 301/308 on those paths): the effort router's requests
+  go through Claude Code, which follows redirects (see [Which backend](#which-backend)).
 - jev-hooks accepts `http://` **only towards local hosts** (loopback, private ranges,
   `100.64.0.0/10` for Tailscale, `*.ts.net`, `*.local`). Anything else must be
-  `https://`, checked before a byte is sent.
+  `https://`, checked before a byte is sent. The check covers the URL you configure,
+  not the target of a redirect.
 
 ```bash
 rizzo serve --host 127.0.0.1 --port 8017 --quant bf16 --device cuda
@@ -227,25 +238,33 @@ installed somewhere else, or a version manager whose directory variable is set o
 your shell. Without a suitable Node the hook skips the review with a notice that says
 so, instead of failing your commit.
 
+The effort router needs neither Node nor bash: it runs inside Claude Code, as a
+function hook with requirements of its own (see
+[What it needs](#what-it-needs)).
+
 Then open `/plugin`, pick jev-hooks and fill in its options:
 
 | Option | Default | Meaning |
 |---|---|---|
 | `review_url` | empty (reviewer off) | Base URL of the `/v1/systemone` backend |
+| `router_url` | empty (uses `review_url`) | Backend of the effort router, when it should not share the reviewer's |
 | `api_key` | empty | Bearer key: required for TypeSafe, optional for rizzo with `RIZZO_API_KEY` |
-| `model` | `jev-latest` | Requested model; `jev-latest` also works with rizzo-flow |
+| `router_api_key` | empty (uses `api_key` or the key file, only when `router_url` is empty or on `review_url`'s host) | Bearer key for `router_url` |
+| `model` | `jev-latest` | Requested model, for the reviewer and the router; `jev-latest` also works with rizzo-flow |
 | `commit_review` | `true` | Review when Claude runs `git commit` |
+| `effort_router` | `false` | Turn the [effort router](#effort-router-opt-in) on; it also needs function hooks |
 
-The planned effort router will add its own options when it ships.
+**Where the key lives, and why.** `api_key` and `router_api_key` are `sensitive`
+options: Claude Code keeps them out of `settings.json`. The command hooks receive the
+options in their own environment, not in the environment of the commands Claude runs,
+and the router gets them from Claude Code in-process, never through an environment.
+That matters, because anything in the `env` block of your settings reaches every
+Bash command, and a prompt injection in a file Claude reads could send it anywhere.
+Fallbacks, in order of preference:
 
-**Where the key lives, and why.** `api_key` is a `sensitive` option: Claude Code keeps
-it out of `settings.json`, and plugin options are set in the hooks' environment, not in
-the environment of the commands Claude runs. That matters, because anything in the
-`env` block of your settings reaches every Bash command, and a prompt injection in a
-file Claude reads could send it anywhere. Fallbacks, in order of preference:
-
-- `~/.config/jev-hooks/key`, one line, `chmod 600` (jev-hooks warns when other users
-  can read it). Hide it from Claude's sandbox:
+- `~/.config/jev-hooks/key`, one line, `chmod 600` (the commit hook warns when other
+  users can read it; the router cannot check, see [Which backend](#which-backend)).
+  Hide it from Claude's sandbox:
   `"sandbox": {"credentials": {"files": [{"path": "~/.config/jev-hooks/key", "mode": "deny"}]}}`.
   A build installed from a local clone before this preview used another file name:
   see [Upgrading from an earlier local build](CHANGELOG.md#upgrading-from-an-earlier-local-build);
@@ -253,12 +272,18 @@ file Claude reads could send it anywhere. Fallbacks, in order of preference:
   `TYPESAFE_API_KEY` / `TYPESAFE_DEFAULT_MODEL`. If they sit in your settings, deny
   them to the sandbox with `"sandbox": {"credentials": {"envVars": [{"name":
   "JEV_HOOKS_KEY", "mode": "deny"}, {"name": "TYPESAFE_API_KEY", "mode": "deny"}]}}`.
+  The router reads none of these keys: from the environment it takes only a URL.
 
 Each source is a layer of (URL, key, model), and a key is sent **only to the URL of its
 own layer**: a `TYPESAFE_API_KEY` exported for the SDKs never travels in clear to the
 rizzo box on your LAN. The key goes only in the `Authorization` header, never in URLs,
-output, logs or error messages, and redirects are refused so it cannot follow one to
-another host.
+output, logs or error messages. The reviewer's client refuses redirects, so the key
+cannot follow one to another host. The router's requests go through Claude Code's
+`$.http.fetch`, which follows up to five redirects and drops `Authorization` when one
+leads to another origin (another scheme, host or port): only a redirect within the
+same origin still carries the key. The body is another matter: on a 307 or 308 the
+request is sent again with its body, your prompt, to any http or https origin, see
+[Which backend](#which-backend).
 
 Check the setup from your own terminal (Claude's sandbox cannot reach your LAN, which is
 why the planned skills run inside a hook):
@@ -276,8 +301,9 @@ from.
 
 ### Updating
 
-The installed plugin is a copy in `~/.claude/plugins/cache/`, taken at install time. A
-new commit on GitHub does not arrive on its own:
+The installed plugin is a copy in `~/.claude/plugins/cache/`, taken at install time,
+and Claude Code compares version numbers, not commits: a change arrives with the
+release that raises the version, and only when you ask for it:
 
 ```
 /plugin marketplace update 7hemas7er-jev-hooks
@@ -288,9 +314,12 @@ Then start a new session: the open one keeps the old hooks.
 
 ### Turning it off
 
-`commit_review: false` in `/plugin`, or `JEV_HOOKS_DISABLE=1`, or `"hook": {"enabled":
-false}` in your user `policy.json`. If you also run Anthropic's security-guidance
-plugin, it reviews `git commit` too: keep both, or switch one off.
+The reviewer: `commit_review: false` in `/plugin`, or `"hook": {"enabled": false}` in
+your user `policy.json`. The effort router: `effort_router: false` (its default),
+`JEV_HOOKS_ROUTER=0`, or `"enabled": false` in your user or the project's
+`router.json` ([more](#switches)). `JEV_HOOKS_DISABLE=1` turns off both. If you also
+run Anthropic's security-guidance plugin, it reviews `git commit` too: keep both, or
+switch one off.
 
 ## Configuration: open a JSON, never touch the code
 
@@ -299,7 +328,7 @@ plugin, it reviews `git commit` too: keep both, or switch one off.
 | `checks.json` | The questions: id, label, type, the exact text sent to the model, which state it sees, whether it is critical |
 | `policy.json` | Lanes and their order, rules and thresholds, detectors and floors, escalation behaviour, chunk and time limits |
 | `calibration.json` | Per-backend profiles (matched by fingerprint, model or host): temperatures, per-question thresholds, the uncertainty band |
-| `router.json` | The planned effort router's questions and effort mapping |
+| `router.json` | The effort router's questions, the effort each answer leads to, its timing and its cache guard |
 
 Every key starting with `_` is a note for humans: the defaults explain each threshold
 in its `_why`, with the numbers it was chosen on. `jev-review explain <check>` prints
@@ -323,6 +352,10 @@ removing a floor would take one line. So:
   pointer;
 - a project `calibration.json` is ignored: a steep calibration could squash every
   probability to zero;
+- a project `router.json` can only turn the effort router off (`"enabled": false`) or
+  lower its cap (`"max_effort"`); every other field is ignored with a note that names
+  it (the first three; past them one note gives how many more), and no note quotes the
+  file;
 - a project `checks.json` can ask different questions, but the trusted rules must still
   resolve against it, its texts are never shown to Claude, and its regexes run in a
   worker with a time limit;
@@ -337,6 +370,325 @@ the plugin policy with one threshold raised; copy it to `~/.config/jev-hooks/pol
 and the demo's `secret.diff` goes from "escalate to Claude" to MERGE, with no code
 change. `scripts/simulate-policy.ts` shows what any policy change does to the bench
 before you trust it.
+
+## Effort router (opt-in)
+
+Claude Code lets a function hook set the effort of each model request. The router uses
+that to spend less reasoning where a prompt does not need it: before the turn starts,
+the backend answers seven closed questions about the prompt, and plain code turns the
+probabilities into an effort, with rules and thresholds you can read in
+`config/router.json`. As with the reviewer, the model only classifies; your JSON
+decides.
+
+```
+you press Enter
+        │  prompt.submit: the prompt waits for the answer or timeout_ms (1.5 s)
+        ▼
+  typed by you, not "/" or "!", allowed model, backend free? ── no ──▶ turn as it is
+        │
+        ▼
+  POST /v1/systemone ── 7 router questions, the prompt as the state
+        │               (redacted and masked towards a non-local backend)
+        ▼
+  probabilities ──▶ calibration profile ──▶ classification
+        │
+        │  turn.start: kept for the turn whose text is this prompt
+        ▼
+  turn.step, main loop ──▶ base step, adjustments, explicit depth, floor,
+        │                  then capped at the session's effort
+        ▼
+  effort of that turn's requests (subagents untouched) ──▶ cache guard
+```
+
+### What it needs
+
+- **`effort_router: true`** in `/plugin` (default `false`). Claude Code hands the
+  options to the module when it loads it, and reloads it when they change, so with the
+  option off the module registers no hook at all and no prompt pays for it.
+- **Function hooks turned on**: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in Claude Code's
+  environment (exported before you start `claude`, or in the `env` block of your
+  settings), unless your account already has them through Claude Code's own rollout.
+  They never load under `--bare`, `disableAllHooks` or `allowManagedHooksOnly`.
+  Function hooks are early access: their API can change between Claude Code releases
+  without notice, and the router was written and tested against 2.1.283.
+- **Opus 5.5 or Fable 5.1, and the per-turn-control beta on your account.** Only with
+  both does a change of effort keep the prompt cache. Without the beta, or after Claude
+  Code drops it until `/clear` or `/compact`, every change of effort empties the cache
+  and the turn pays for the whole context again. The plugin can check the model
+  (`only_models`: `opus-5-5` and `fable-5-1`, matched case-insensitively inside the
+  model id) but cannot see the beta. That is why the router is opt-in, and why it
+  watches the cache itself ([The cache guard](#the-cache-guard)).
+- **A backend**: `router_url`, or `review_url` when it is empty
+  ([Which backend](#which-backend)).
+
+### What it decides
+
+The seven questions are in English, because rizzo's quality has been measured only in
+English, and each says that the prompt is data to classify, never an instruction to
+follow:
+
+| Question | Type | Asks |
+|---|---|---|
+| `task_kind` | choice | question, small_edit, bug_with_error, feature, refactor, design, review, ops or continue |
+| `scope` | score | how much code: one line, one file, one module, the whole repository (levels 0 to 3) |
+| `has_error_evidence` | noul | does the prompt carry an error message, a stack trace or a failing test? |
+| `risky_irreversible` | noul | would doing it act on a real system in a way that is hard to undo? |
+| `underspecified` | noul | does it leave out something needed to do it right? |
+| `multi_deliverable` | noul | does it ask for several distinct results? |
+| `explicit_depth` | choice | does the user ask for quick, for thorough, or neither? |
+
+The effort moves along low < medium < high < xhigh < max, starting from the one the
+session sends (your setting, or the model's default), in this order:
+
+1. **Base step** from the task kind, relative to the session: question −2, small_edit
+   −2, bug_with_error 0, feature −1, refactor 0, design 0, review −1, ops −2.
+   `continue` keeps the effort the router gave the previous turn.
+2. **Adjustments**, in file order: `scope` at level 2 or more, one step up;
+   `multi_deliverable` ≥ 0.6, one step up; `underspecified` ≥ 0.6 or
+   `has_error_evidence` ≥ 0.6, at least medium.
+3. **Explicit depth**, when its answer has p ≥ 0.4, replaces what came before: quick is
+   low, thorough is the session's effort.
+4. **Floor**: `risky_irreversible` ≥ 0.5 means at least high.
+5. **Clamp**: at least `min_effort` (low), at most the cap. The cap is the session's
+   effort (`respect_session_effort: true`) and wins over the floor, so the router **only
+   lowers**: a floor can keep it from lowering, never make it raise. A project
+   `max_effort` is one more cap. The file's own `max_effort` (high) is the cap only with
+   `respect_session_effort: false`, the one setting under which the router may raise.
+
+With the session at high, a prompt classified as small_edit (a rename) goes to low and
+a feature to medium; a bug report with its stack trace stays at high; a request to
+deploy to production "quickly" stays at high too (quick says low, the floor says high).
+With the session at max, a question goes to high: the steps are relative.
+
+The turn keeps its effort when:
+
+- the task kind's calibrated probability is below `min_top_probability` (0.3);
+- an answer that a rule reads is missing: every rule in the shipped file raises, so
+  skipping one would push the effort down;
+- the session's effort is a number (an internal token budget, which a hook may pass on
+  but not set) or absent (`assume_session_effort: null`). It is absent only on a model
+  without effort, or with `CLAUDE_CODE_EFFORT_LEVEL` set to `unset` or `auto`;
+- the result is the session's effort anyway.
+
+### Which prompts, which turn
+
+- **Only what you type.** `only_origins` is `["composer"]`, the one origin Claude Code
+  attests as your own Enter. Task notifications, scheduled triggers, auto-continuations,
+  channels, peers, SDK and plugin prompts are never sent. `"bridge"`, your messages
+  from Remote Control, can be added in your user `router.json`. A name Claude Code
+  2.1.283 never sends (an earlier draft had `"human"`) is a validation error, rather
+  than a router that silently skips every prompt.
+- Prompts that start with `/` or `!` are not sent (`skip_prefixes`), nor empty ones. A
+  long prompt keeps its first 3000 characters and its last 1000 around a `[…]` mark
+  (`prompt_head_chars` 3000, `prompt_max_chars` 4000): the head says what is asked, the
+  tail often holds the error.
+- **A classification reaches only the turn its own prompt starts**: at `turn.start` the
+  turn's text must be the prompt's. A prompt blocked by another hook (guardrail can),
+  one typed during a turn and folded into it, a turn started by a notification or a
+  continuation: none of them picks up a classification that is not its own. A
+  notification or a command that arrives while your prompt waits for its turn does not
+  take its classification away either.
+- The effort changes at the turn's first main-loop request and again at every later
+  one, since Claude Code rebuilds each step from the session, unless someone else
+  changed it in the meantime or the step runs on a model outside `only_models` (a
+  fallback model), whose prompt cache the change would clear. Subagents are never
+  touched, and neither is the model.
+- After a step on a model outside `only_models`, the next prompts are not even sent,
+  so they do not wait for an answer that cannot be used. The first prompt of a session
+  comes before any step has shown the model, so it is sent.
+
+Keep one effort router only: two would fight over the same field. This one never
+overwrites an effort that someone else changed during the turn.
+
+### Timing and failures
+
+- The prompt waits for the classification, `timeout_ms` (1500 ms) at most. On the
+  Spark, the seven questions on a short prompt take 0.22 s warm. `timeout_ms` accepts
+  up to 30000, Claude Code's own limit on a fetch. The wait does not count against the
+  10 s a hook may spend, because a hook's clock stops while its fetch is out, but your
+  prompt waits all the same.
+- The end of that wait is a Claude Code timer (`$.clock.after`). If another hook
+  refuses that call (another plugin's, or one your administrator manages), the timer
+  never fires and nothing says so: the prompt then waits for the fetch itself, up to
+  Claude Code's 30 s.
+- After a timeout the router rests for `busy_after_timeout_ms` (30 s): rizzo keeps
+  computing a request its client abandoned, and the router cannot cancel a
+  `$.http.fetch`. A request still in flight also holds back the next one: never two at
+  a time.
+- **Fail-open, visibly.** A backend that is down, slow or misconfigured, or an answer
+  that cannot be read, leaves the turn as it is, with one line in the transcript; the
+  same line again goes to the debug log only, until another line or a good answer
+  replaces it. The same holds when Claude Code refuses `$.http.fetch`, by an
+  administrator's policy or in its essential-traffic-only mode. A request that fails
+  gives `request failed`, followed at most by a fixed reason: `(network disabled by
+  policy)`, `(nonessential traffic disabled)`, or the error code Claude Code reports,
+  such as `(ConnectionRefused)`. The error's own text never reaches the line: after a
+  redirect it quotes an address the backend chose.
+- **Nothing sent without the mask map.** Towards a non-local backend, a guardrail mask
+  map that exists but cannot be read or parsed, or one that cannot even be looked for
+  (neither `HOME` nor `GUARDRAIL_MASK_MAP` is set), stops every request: the turn stays
+  as it is, and one transcript line says why; its repeats go to the debug log
+  ([Privacy](#privacy)).
+- **Off while your `router.json` cannot be read.** One in `~/.config/jev-hooks/` that
+  is there but cannot be read may hold your `"enabled": false`, so nothing is sent
+  until it can be read, and one transcript line says so
+  ([Configuration](#configuration)).
+- If you interrupt while it waits, it says nothing and changes nothing.
+
+### Which backend
+
+`router_url`, or `review_url` when it is empty: by default the router **shares the
+reviewer's instance** (port 8017 in the examples). That costs no extra memory, and it
+has a price: rizzo serializes requests, so while a commit review runs, the router's
+request waits behind it, times out after 1.5 s and leaves the turn's effort alone, and
+the router then rests for 30 s. A second instance removes the contention for about
+10 GB more in BF16: run another `rizzo serve` (for example on port 8019, behind the same
+proxy) and point `router_url` at it. Nothing else changes.
+
+Two layers, and nothing else:
+
+- yours: `router_url` or `review_url`, with `router_api_key`, or else `api_key` or the
+  key file. Those two were given for `review_url`, so they follow `router_url` only
+  when it has `review_url`'s scheme and host; the port does not count, so a second
+  instance on the same box (8017 and 8019) shares the key. A `router_url` anywhere
+  else, a LAN rizzo over `http://` next to a TypeSafe `review_url` for one, gets
+  `router_api_key` or no key at all, never the TypeSafe key in clear;
+- the environment's, which gives a URL only (`JEV_HOOKS_ROUTER_URL`, then
+  `JEV_HOOKS_URL`), never a key: a variable exported in a shell is not a choice of
+  where a key may go. There is no `TYPESAFE_*` fallback.
+
+`http://` goes only towards local hosts, checked before a byte is sent, as for the
+reviewer. That check, like the choice of whether to redact the prompt
+([Privacy](#privacy)), looks at the URL you configure, and a redirect can lead
+elsewhere: Claude Code's `$.http.fetch` follows up to five, and the router cannot turn
+that off. On a 301, 302 or 303 the request becomes a GET without a body; on a 307 or
+308 the same POST goes again, prompt included (redacted towards a non-local backend,
+as you typed it towards a local one), to any http or https origin, a switch from
+`https://` to plain `http://` included, and only `Authorization` is dropped when the
+origin changes. So `router_url`, and any proxy in front of it, must answer `POST
+/v1/systemone` itself: no http-to-https or canonical-host redirect on that path. The
+reviewer is not affected: its client refuses redirects.
+
+The router reads the key file (its first non-empty line) through Claude Code, and
+cannot tell who else may read it, because a function hook sees no file mode: keep it
+`chmod 600` yourself.
+
+### What you see
+
+- A status line under the prompt: `jev router: small_edit 0.91 → low`, or
+  `jev router: feature 0.62, effort unchanged (high)`. It is cleared when the router
+  skips or fails a prompt between turns, and at the first request of a turn that no
+  classification reached, so a stale one never stays. A prompt that arrives during a
+  turn (one you type, a notification) leaves it, since that turn still runs at the
+  effort it shows; only a switch that turns the router off clears it then.
+- When it changes the effort, one dim transcript line, not sent to the model, with the
+  rules that fired: `[jev-hooks] effort high → low: small_edit 0.91: -2 → low`.
+- In the debug log (`claude --debug`): each classification (`[jev-hooks] router:
+  small_edit 0.91, scope 0, has_error_evidence 0.02, … in 220 ms (profile
+  spark-bf16-2026-09)`), the decisions that left the effort unchanged, and each prompt
+  skipped, with the reason.
+- A failure, as one transcript line ([Timing and failures](#timing-and-failures)).
+- A note on your or the project's `router.json` (invalid, a field ignored) goes to the
+  transcript once, and again only when what the notes say changes. A project file
+  names three ignored fields at most, and one more note gives the number of the rest.
+
+None of these lines carries the prompt, a key or text written by the backend. Besides
+ids, levels and numbers, a line can quote Claude Code's own messages (an error in the
+fail-open line `error, turn left as is (HooksError: …)`, a model's name) or your own
+configuration: a value or a JSON error from your `router.json` or `calibration.json`,
+the host of the router's URL. A note on a project file names only the field, never
+what the file holds.
+
+### The cache guard
+
+The plugin cannot see the beta, but it sees the usage of every request. After a change
+of effort the prompt cache should still serve most of the previous request; when it
+serves less than `max_read_ratio` (0.5) of it, the step is a suspect. After `trips` (2)
+suspects in a row the router turns itself off for the session, with a transcript line
+that says why and the status `jev router: off for this session (effort changes cleared
+the prompt cache)`; a warm step clears the count. Only steps that can be judged fairly
+count: the first request of a turn, when its effort differs from the previous
+request's, on the same model, with no compaction in between, after a previous request
+of at least `min_prefix_tokens` (8192), and when its turn started at most `max_gap_ms`
+(240000 ms, 4 minutes) after the start of the turn that made the previous request,
+because after a longer pause the cache may have expired on its own. The gap runs
+between turn starts, not prompts: a prompt typed during a turn waits for that turn to
+end, and a slow `UserPromptSubmit` hook holds one back, so a prompt can come long
+before its turn starts. A prompt that started no turn (blocked beneath, a `!` command),
+a turn that sent no request, or one whose start time the router could not read (its
+first request is not judged either) does not count as the previous one, so the gap
+never looks shorter than the pause. If it trips in every session, set `effort_router`
+to false. `"cache_guard": null` in your `router.json` turns the guard off.
+
+### Privacy
+
+With the router on, **the text of every prompt you type goes to the router's backend**,
+except the ones it skips. Towards a local backend (loopback, private ranges, Tailscale)
+it goes as it is, because it does not leave your network, as long as that backend, or
+the proxy in front of it, answers itself: a 307 or 308 redirect would send it on, as it
+is, wherever it points ([Which backend](#which-backend)). Towards a non-local one, such
+as TypeSafe, it is redacted first: every token of at least 20 characters with at least
+4 bits of entropy per character becomes a random value of the same shape, private-key
+PEM blocks are replaced, and guardrail's mask map (`GUARDRAIL_MASK_MAP`, otherwise
+`~/.config/guardrail/mask.tsv`) is applied. Both see the whole prompt: a long one is
+clipped only afterwards, so a cut never leaves pieces of a secret too short to be
+recognized. If the map exists but cannot be read or parsed, or cannot be looked for
+because neither `HOME` nor `GUARDRAIL_MASK_MAP` is set, nothing is sent, and one
+transcript line says so. A closing evidence tag in the prompt is neutralized in both
+cases. A secret shorter or more regular than that still goes out: for private work,
+prefer a local rizzo. The prompt is never written to a log.
+
+### Configuration
+
+- The plugin's `config/router.json` holds every field, with notes in its `_comment`. It
+  reaches the module through the generated `src/core/defaults.ts`, because Claude
+  Code's module loader does not import `.json`.
+- Your `router.json` in `${XDG_CONFIG_HOME:-~/.config}/jev-hooks/` replaces it whole
+  and is validated the same way: copy the plugin's file and edit the copy. An invalid
+  one leaves a note, and the plugin's applies, with one exception: its `"enabled":
+  false` still keeps the router off, so a file written for an earlier version, or with
+  one wrong field, never turns it back on. A file that is not JSON at all (a trailing
+  comma or a `//` comment is enough) says nothing, so the plugin's applies to it too,
+  with the note. A file that is there but cannot be read (its permissions, a loop of
+  links, another plugin's refusal) may hold that `"enabled": false`, so the router
+  stays off, with one note, until it can be read. Your `calibration.json` there applies
+  to the router too (one that cannot be read gets a note, and the plugin's applies);
+  the project's never does.
+- The project's `.jev-hooks/router.json` is read where the reviewer reads `.jev-hooks/`:
+  at the top level of the checkout the session runs in, found from the session's
+  directory the way `git rev-parse --show-toplevel` finds it, so a linked worktree's
+  own file counts. In a linked worktree the main working tree's `.jev-hooks/router.json`
+  is read as well, and its notes say `(main working tree)`. Each can only turn the
+  router off or lower the cap, so together they give the lower cap
+  ([Configuration](#configuration-open-a-json-never-touch-the-code)). Outside a
+  repository, it is read in the session's directory. If another plugin refuses Claude
+  Code's `$.session.repo`, the top level is still found from the session's directory
+  (the session's directory itself when no `.git` is found); in a linked worktree only
+  the checkout's own file is read then, because the main working tree is unknown.
+
+### Switches
+
+- `effort_router: false` in `/plugin`: the module reloads and registers nothing.
+- `JEV_HOOKS_ROUTER=0` turns off the router alone, `JEV_HOOKS_DISABLE=1` the whole
+  plugin. Both are read at every prompt from Claude Code's own environment, which is
+  set before it starts: exported in the shell that launches `claude`, or in the `env`
+  block of your settings. An `export` inside a command Claude runs does not reach it.
+- `"enabled": false` in your `router.json` or in the project's. Yours keeps the router
+  off even when another field is invalid, as long as the file is still JSON: a syntax
+  error such as a trailing comma or a comment makes the whole file say nothing, so the
+  plugin's `router.json` applies, with a note. A `router.json` of yours that is there
+  but cannot be read keeps the router off too, with a note, until it can be read.
+
+### Not measured
+
+The router's questions have no bench: only their latency is measured. Its thresholds
+are **not fitted**, and they compare calibrated probabilities. On the Spark profile, and
+on other rizzo builds, a choice's probabilities are tempered with t = 3, so
+`min_top_probability` 0.3 on the nine-option `task_kind` needs a raw top probability of
+about 0.83 when the rest is spread over the other eight options. The router will often
+leave the effort alone: the safe side, and not measured either. The debug log prints
+every classification, so the thresholds can be tuned on your own prompts, in your
+`router.json`.
 
 ## The measured bench
 
@@ -449,9 +801,23 @@ only, and guardrail's mask map (`~/.config/guardrail/mask.tsv`) is applied when 
 If that map exists but is invalid, nothing is sent. Towards a local backend the state is
 sent as it is, because it does not leave your network.
 
+**Your prompts and the router.** With `effort_router` on, what you type goes to the
+router's backend, redacted as above when that backend is not local
+([Privacy](#privacy)). A prompt can carry text written by others (a pasted log, an
+issue), and that text can try to steer the classification. The worst it can do is move
+the effort of that one turn between `min_effort` and your session's effort: the cap is
+the session's, the router never touches the model, and nothing the backend writes
+reaches Claude, since the router's lines are notices the model does not receive, and
+they never carry the backend's text. Only prompts you type are classified (in the composer, and from
+Remote Control if you add `bridge`), so text that arrives by other routes
+(notifications, peers, other plugins) is never sent.
+
 **What never leaves.** The log (`log.jsonl` in the plugin's data directory) records
 outcomes, probabilities, hashes and the backend's fingerprint, never the diff, the title,
-the description, a prompt or a key. The repo itself contains no realistic secret and no
+the description, a prompt or a key. The router writes no file: its lines go to the
+transcript or to Claude Code's debug log and carry ids, levels and numbers, Claude
+Code's own messages and pieces of your own configuration (a wrong value in your
+`router.json`, the backend's host), never the prompt, a key or the backend's text. The repo itself contains no realistic secret and no
 injection phrase: the tests and the demo compose them at run time, so the reviewer does
 not fire on its own repository and GitHub's push protection stays quiet.
 
@@ -475,9 +841,30 @@ not fire on its own repository and GitHub's push protection stays quiet.
   scripts or aliases, are not reviewed, and some `git add && git commit` combinations
   get an approximate diff.
 - **Latency.** rizzo serializes requests: a large diff split into many chunks, or a
-  second client on the same instance, makes you wait.
+  second client on the same instance, makes you wait. The router is such a client when
+  it shares the reviewer's instance: a review in progress makes it time out and leave
+  the effort alone, and its own request can hold a review back by a fraction of a
+  second.
+- **The router rests on early-access APIs.** Function hooks can change between Claude
+  Code releases without notice; the router was written and tested against 2.1.283, in
+  Claude Code's own test kit and on a fake engine under Node.
+- **No live session has run the router yet.** Some of what it relies on rests only on
+  Claude Code 2.1.283's declarations, its test kit and the fake engine: that the effort
+  a function hook sets reaches the API request, and that `e.effort` is present by
+  default; the Fable 5.1 model id that `only_models` matches; that `turn.start`'s text
+  in a live engine equals the text `prompt.submit` saw; that the prompt cache stays
+  warm after a change of effort the router made, with the beta; that a stored
+  sensitive key reaches the module's `options`; that the command hooks and the module
+  load together, and that a broken module does not stop the commit hook; what happens
+  on Esc during the wait.
+- **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
+  is active. The cache guard notices a cleared cache only after the fact: two turns
+  that each paid for the whole context again.
+- **The router is not measured.** Its questions have no bench and its thresholds are
+  not fitted ([Not measured](#not-measured)).
 - **Platforms.** Developed on Linux; CI runs Node 22.18 and 24 on Ubuntu. Windows is
-  untested (the hook launcher is a bash script).
+  untested (the hook launcher is a bash script; the router needs no bash, but it has
+  not been tested there either).
 
 ## Development
 
@@ -485,20 +872,28 @@ Everything runs on Node ≥ 22.18 with no build step and no dependencies. The ru
 contributors, human or agent, are in [`AGENTS.md`](AGENTS.md).
 
 ```bash
-node --test "tests/**/*.test.ts"       # offline: a fake /v1/systemone server, temporary dirs only
+node --test "tests/**/*.test.ts"       # offline: a fake /v1/systemone server, a fake engine, temporary dirs only
 node scripts/validate-manifest.ts      # manifests, hooks.json, config/*.json
 node scripts/generate-defaults.ts --check
 node scripts/check-english.ts          # leftover Italian outside the data
+claude plugin validate .claude-plugin/plugin.json   # what hooks/register.ts hooks, calls and reads
+node scripts/test-cc.ts                # tests-cc/ in Claude Code's own test kit
 ```
 
 Always pass the glob: without it, `node --test` runs every `.ts` file as a program,
-helpers included.
+helpers included. The router's decisions are pure functions in `src/core/router.ts`,
+tested under Node and in a `node:vm` context as strict as the one Claude Code 2.1.282
+gave function hooks; `hooks/register.ts` only carries data between Claude Code and
+them. The last two commands need the `claude` CLI, so CI does not run them.
+`claude plugin test` takes a plugin root and cannot set options, so
+`scripts/test-cc.ts` runs it on a temporary copy of the plugin with the router on;
+without the CLI it says so and exits 0.
 
 Try the reviewer on the demo diffs (secrets and injection phrases are composed at run
 time, so none of them sits in the repo):
 
 ```bash
-node scripts/generate-demo.ts /tmp/jev-demo
+node scripts/generate-demo.ts /tmp/jev-demo                   # --seed N: the same values every run
 bin/jev-review.mjs --diff /tmp/jev-demo/known-secret.diff     # BLOCK from a floor, even with no backend
 bin/jev-review.mjs --diff /tmp/jev-demo/uncertain.diff --escalate
 bin/jev-review.mjs explain hardcoded_secret
@@ -538,7 +933,7 @@ changes.
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 - **jev-model-router** (MIT, in
   [davila7/claude-code-templates](https://github.com/davila7/claude-code-templates)) is
-  prior art for the planned effort router's hook pattern.
+  prior art for the effort router's hook pattern.
 - **[Anthropic Claude Code](https://docs.anthropic.com/en/docs/claude-code)** provides
   the plugin, hook and function-hook system this runs on.
 - **guardrail**, a sibling plugin by the same author, provides the mask map format that

@@ -2,12 +2,14 @@
 
 This repo is both a Claude Code plugin and its marketplace (`7hemas7er-jev-hooks`).
 It holds a commit reviewer that asks typed questions of a `/v1/systemone` backend
-(TypeSafe's Jev or rizzo-flow) and computes the verdict in code. A per-turn effort
-router (function hook, off by default) is planned: `config/router.json` holds its
-questions, but no hook runs it yet. The README, this file and the comments in the code
-are the reference. The maintainer's design notes are not published (a local `.piano/`
-directory, ignored by git): read them if you have them, otherwise open an issue before
-changing the architecture.
+(TypeSafe's Jev or rizzo-flow) and computes the verdict in code, and a per-turn effort
+router: a function hook (`hooks/register.ts`, early access, off unless the
+`effort_router` option is true) that asks the same backend what kind of request a
+prompt is and lowers that turn's effort. Its decisions are pure functions in
+`src/core/router.ts`; its questions and thresholds are in `config/router.json`. The
+README, this file and the comments in the code are the reference. The maintainer's
+design notes are not published (a local `.piano/` directory, ignored by git): read
+them if you have them, otherwise open an issue before changing the architecture.
 
 ## Code rules
 
@@ -21,9 +23,11 @@ They apply to every TypeScript file, and the tests enforce them.
    of a type would stay an import of a value that does not exist.
 3. **Relative imports with the `.ts` extension written out.** No tsconfig `paths`:
    Node does not read them.
-4. **`src/core/**` is pure.** The planned effort router (`hooks/register.ts`, pure
-   too) will load it into the nearly empty `node:vm` context of Claude Code's module
-   loader, where the Node and web globals are missing. No `node:*`, `process`,
+4. **`src/core/**` is pure.** The effort router (`hooks/register.ts`, pure too)
+   loads it into the environment of Claude Code's module loader. Claude Code 2.1.283
+   declares `URL`, `TextEncoder`, `AbortController`, `crypto`… there and 2.1.282 did
+   not; the core relies on none of them, so it runs the same in Node, in older builds
+   and in the stricter context the tests build. No `node:*`, `process`,
    `Buffer`, `require`, `fetch`, `setTimeout`, `Date`, `crypto`, `console`,
    `globalThis`, dynamic `import()`,
    `URL`, `URLSearchParams`, `TextEncoder`, `TextDecoder`, `structuredClone`,
@@ -31,7 +35,7 @@ They apply to every TypeScript file, and the tests enforce them.
    `queueMicrotask`, `WeakRef`, `FinalizationRegistry`, `Atomics`,
    `SharedArrayBuffer`, `WebAssembly`, `eval`, `Function(`. Time, network and
    randomness come from outside (the `Transport` and `Clock` ports in
-   `src/core/types.ts`). A forbidden name does not fail at load time: it throws
+   `src/core/types.ts`; in `hooks/register.ts`, from `$`). A forbidden name does not fail at load time: it throws
    `ReferenceError` at run time, inside a try/catch that hides it. That is why
    `tests/structure/purity.test.ts` exists.
 5. **Zero dependencies.** `package.json` has no `dependencies` and no
@@ -39,7 +43,16 @@ They apply to every TypeScript file, and the tests enforce them.
    `node:assert` in the tests.
 6. **`tsconfig.json`** serves the editor and the optional type-check job, never
    execution. It covers only the pure code (`src/core`, `hooks/`): the rest uses
-   `node:*`, and without `@types/node` tsc would not understand it.
+   `node:*`, and without `@types/node` tsc would not understand it. The `claude-code`
+   types that `hooks/register.ts` imports come from `/plugin-types`, written into
+   `.claude/types/` (ignored by git): the declaration is large and trips the reviewer's
+   own detectors, so it is never committed.
+
+`hooks/register.ts` also obeys Claude Code's plugin scanner, which
+`claude plugin validate .claude-plugin/plugin.json` applies: `$` is never passed to an
+imported function or bound to a name, every call is spelled `$.noun.method(...)`,
+`$.env.get` takes a literal name, and nothing is imported from a `.json`. Its header
+says why; the logic stays in `src/core/router.ts`, where the tests reach it.
 
 No code holds thresholds, check ids or question texts: they live in
 `config/*.json`. Behaviour changes by opening a JSON, never by touching the code.
@@ -75,11 +88,15 @@ node scripts/generate-defaults.ts --check
 node scripts/check-english.ts             # leftover Italian outside the data
 bash -n hooks/run-node.sh
 claude plugin validate .                  # marketplace
-claude plugin validate .claude-plugin/plugin.json
+claude plugin validate .claude-plugin/plugin.json   # also lists what hooks/register.ts hooks, calls and reads
+node scripts/test-cc.ts                   # optional, needs the claude CLI: tests-cc/ in Claude Code's test kit
 ```
 
 Node ≥ 22.18 is required (type stripping on by default). The tests use neither the
 network nor a real backend, and they write only into temporary directories.
+`tests-cc/` runs only inside `claude plugin test`, which `scripts/test-cc.ts` points
+at a temporary copy of the plugin with the router on; without the CLI the script says
+so and exits 0. CI runs neither `claude` command.
 
 ## Security
 
