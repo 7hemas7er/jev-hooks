@@ -1,0 +1,55 @@
+# Reverse proxy in front of rizzo-flow (docs/spark.md). rizzo listens on 127.0.0.1 only;
+# Caddy listens on the LAN address, on the same ports, and lets through two routes with
+# the right Bearer token: POST /v1/systemone and GET /v1/models. Everything else,
+# rizzo's unauthenticated /v1/decisions, /health, /docs and /playground included, gets
+# 403. No TLS and no redirects: the effort router's requests follow redirects.
+#
+# RIZZO_TOKEN comes from the Caddy service's environment (a 0600 file). Replace
+# 192.168.1.50 with the machine's LAN address.
+{
+	auto_https off
+}
+
+(rizzo) {
+	# conditions inside one matcher are ANDed: one matcher per allowed route
+	@systemone {
+		method POST
+		path /v1/systemone
+		header Authorization "Bearer {$RIZZO_TOKEN}"
+	}
+	@models {
+		method GET
+		path /v1/models
+		header Authorization "Bearer {$RIZZO_TOKEN}"
+	}
+	request_body {
+		max_size 512KB
+	}
+	handle @systemone {
+		reverse_proxy {args[0]} {
+			transport http {
+				read_timeout 180s
+			}
+		}
+	}
+	handle @models {
+		reverse_proxy {args[0]}
+	}
+	handle {
+		respond 403
+	}
+}
+
+# ":port" with bind, not "http://192.168.1.50:8017": a site address's host matches the
+# Host header and does not limit where Caddy listens, which would clash with rizzo on
+# 127.0.0.1 and refuse requests forwarded by tailscale serve with another Host.
+:8017 {
+	bind 192.168.1.50
+	import rizzo 127.0.0.1:8017
+}
+
+# A second rizzo instance for the effort router, if you run one (router_url):
+# :8019 {
+# 	bind 192.168.1.50
+# 	import rizzo 127.0.0.1:8019
+# }
