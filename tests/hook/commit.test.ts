@@ -207,7 +207,7 @@ test('escalation (deny_then_allow, the default): deny with the prompt, then the 
     assert.match(reason(one), /^\[jev-review\] NITS: touches_auth 0\.78 ≥ \d\.\d\d \(src\/app\/middleware\.py\) · profile rizzo-provisional \(uncalibrated\) · escalation to check before committing\n\n\[jev-review\] escalation: 1 point/)
     assert.match(reason(one), /above the escalation threshold · touches_auth\n {3}p = 0\.78 · threshold \d\.\d\d\n/)
     assert.match(reason(one), /Files: src\/app\/middleware\.py \(lines 1–2\)/)
-    assert.match(reason(one), /if it is not, repeat the same commit: the second time it goes through without escalation\.$/)
+    assert.match(reason(one), /if it is not, repeat the same commit: the second time it goes through without escalation\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/)
 
     // second attempt, same diff and same items: no decision (the plugin never emits
     // allow), the nits in the context and a line that says why it goes through
@@ -231,6 +231,30 @@ test('escalation (deny_then_allow, the default): deny with the prompt, then the 
     const four = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(four), undefined, four.out)
     assert.equal(logLines(pr).filter((x) => x.outcome === 'escalation_allowed').length, 2)
+  } finally {
+    close(pr)
+  }
+})
+
+// A deny stops the git add of the same command too: git commit alone, repeated after
+// it, would find the old index. The reason says so only when the command stages first.
+test('a deny after git add in the same command asks to repeat the whole command; without git add it does not', async () => {
+  const pr = trial()
+  try {
+    pr.r.write('src/app/middleware.py', MIDDLEWARE)
+    pr.r.git('add', '-A')
+    const alone = await commit(pr, 'git commit -m "Add the middleware"')
+    assert.equal(decision(alone), 'deny', alone.out)
+    assert.match(reason(alone), /repeat the same commit: the second time it goes through without escalation\.$/)
+    assert.doesNotMatch(reason(alone), /Nothing in the command ran/)
+    pr.r.git('reset', '-q')
+
+    blockingModel(pr)
+    secret(pr)
+    pr.r.git('reset', '-q')
+    const block = await commit(pr, 'git add src/auth/tokens.py && git commit -m "Add the signing key"')
+    assert.equal(decision(block), 'deny', block.out)
+    assert.match(reason(block), /Fix it before committing, or ask the user\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/)
   } finally {
     close(pr)
   }
@@ -333,7 +357,7 @@ test('model escalation, deny_then_allow, with an ask from the lane or from modif
       const one = await commit(pr, CMD_MIDDLEWARE)
       assert.equal(decision(one), 'deny', `${c.name}\n${one.out}`)
       assert.match(reason(one), c.lane, c.name)
-      assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\.$/, c.name)
+      assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/, c.name)
       const two = await commit(pr, CMD_MIDDLEWARE)
       assert.equal(decision(two), 'ask', `${c.name}\n${two.out}`)
       assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.78\): you decide/, c.name)
@@ -352,7 +376,7 @@ test('escalation deny_then_ask (user file): deny with the prompt, then the user 
     pr.r.write('src/app/middleware.py', MIDDLEWARE)
     const one = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(one), 'deny', one.out)
-    assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\.$/)
+    assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/)
     const two = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(two), 'ask', two.out)
     assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.78\): you decide/)
@@ -417,7 +441,7 @@ test('deterministic escalation (CI workflow, .min.js) with deny_then_allow: deny
       const one = await commit(pr, cmd)
       assert.equal(decision(one), 'deny', `${c.file}\n${one.out}`)
       assert.match(reason(one), c.prompt, c.file)
-      assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\.$/, c.file)
+      assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/, c.file)
       const two = await commit(pr, cmd)
       assert.equal(decision(two), 'ask', `${c.file}\n${two.out}`)
       assert.match(reason(two), /escalation already passed to Claude \(.*\): you decide/, c.file)

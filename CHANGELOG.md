@@ -3,6 +3,15 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+### Fixed
+
+- A deny of the commit hook on `git add … && git commit` says that nothing in the
+  command ran, `git add` included, and asks to repeat the whole command. Claude Code
+  blocks the whole Bash command: `git commit` repeated alone committed the old index,
+  or nothing.
+
 ## 0.2.0 — 2026-09-28
 
 The per-turn effort router, planned since the preview, is built. It is off unless you

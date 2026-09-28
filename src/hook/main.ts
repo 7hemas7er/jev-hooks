@@ -168,6 +168,7 @@ interface Examination {
   config: LoadedConfig
   fromCache: boolean
   approximate: boolean
+  addsFirst: boolean                    // a git add before the commit in the same command
   note?: string
   rules?: { files: string[]; withModified?: string }
   reviewId: string
@@ -237,9 +238,13 @@ function decideHook(e: Examination, a: CommitRun): HookOutput {
   const context = claudeContext(r, e.config.checks)
   const base = hookReason(r)
   const reason = (extra: string[] = []): string => PREFIX + [base, ...extra, ...queue].join(' · ')
+  // A deny stops the whole Bash command, the git add before the commit too: git commit
+  // alone would then commit the old index, or nothing, and its diff would not match
+  // the escalation key.
+  const whole = e.addsFirst ? ' Nothing in the command ran, git add included: repeat the whole command, not git commit alone.' : ''
   // BLOCK floors always deny, on every attempt, whatever the mode
   if (lane.hook === 'deny') {
-    return { decision: 'deny', reason: `${reason()}. Fix it before committing, or ask the user.`, context, messages: warnings }
+    return { decision: 'deny', reason: `${reason()}. Fix it before committing, or ask the user.${whole}`, context, messages: warnings }
   }
   // Escalation: the first attempt on a key (diff + items) denies with the
   // prompt, and Claude rereads the listed files. The second, on the same diff and with
@@ -270,7 +275,7 @@ function decideHook(e: Examination, a: CommitRun): HookOutput {
           + 'the second time it goes through without escalation.'
       return {
         decision: 'deny',
-        reason: `${reason(['escalation to check before committing'])}\n\n${escalationPrompt(r.escalation)}\n\n${then}`,
+        reason: `${reason(['escalation to check before committing'])}\n\n${escalationPrompt(r.escalation)}\n\n${then}${whole}`,
         context,
         messages: warnings,
       }
@@ -406,7 +411,7 @@ async function examine(intent: CommitIntent, a: CommitRun, maskMap: readonly Mas
   if (approximate) line.approximate = true
   appendLog(join(dataDir, LOG_FILE), line)
 
-  const e: Examination = { dir, result, config: cfg, fromCache: cached !== undefined, approximate, reviewId }
+  const e: Examination = { dir, result, config: cfg, fromCache: cached !== undefined, approximate, addsFirst: intent.adds !== null, reviewId }
   if (s.value.note !== undefined) e.note = s.value.note
   if (rules) e.rules = rules
   if (keyFile.warning !== undefined) e.keyWarning = keyFile.warning
