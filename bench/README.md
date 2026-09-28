@@ -347,3 +347,24 @@ model's answer; the `reviewer_instructions` detector finds it anyway.
 
 If a row cannot be labelled without a judgement the question's text does not
 contain, remove it, or fix the criterion: first the criterion, then the calibration.
+
+## `live.jsonl`: commits of this repo (weakens_tests only)
+
+In live use (2026-09-28) the `weakens_tests` wording scored 0.25 to 0.94 on commits of
+this repo that add or tighten tests, bump the pinned CI actions or touch only
+documentation and JSON configuration. `dev.jsonl` has none of those shapes: no
+`node:test` tests, no CI pin bump, no large multi-file commit. `live.jsonl` holds them:
+13 real commits (negatives), 10 mutations of the files at HEAD that do weaken a test or
+the CI (positives) and 4 mutations that do not (hard negatives). It is labelled for
+`weakens_tests` only, and is built by the reviewer's own maintainers, so it serves to
+choose a wording, never to check one: that stays the holdout set's job.
+
+Second round, 2026-09-28 (`variants-weakens.json`, then `variants-weakens-2.json`):
+`i_expected` separated both `dev.jsonl` (AUROC 1.000, mean p on negatives 0.033) and
+`live.jsonl` (AUROC 1.000, 0.094 against 0.514 for the current text). On the frozen
+holdout set, measured once (`results/2026-09-28-holdout-i_expected`, where the
+`attuale` rows are `i_expected`), it lost two positives the current text catches
+(TPR 10/12 against 12/12 at 0.50) while removing false alarms (1/109 against 4/109). The
+reviewer is there not to miss a weakened test, so `checks.json` kept its text. The
+holdout rows it missed were not opened, so that the set stays usable for the next
+check.
