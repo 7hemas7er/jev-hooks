@@ -5,7 +5,8 @@
 // code, comments and strings alike, and prints where they are.
 //
 // Not scanned, because Italian there is data on purpose:
-// - the bench datasets and recorded results (bench/*.jsonl, bench/results/);
+// - the bench datasets and recorded results (bench/*.jsonl, bench/results/), and the
+//   ids of the datasets' rows where another bench file cites them;
 // - tests/data/checks-original.json, the Italian question set generated with the
 //   upstream code-review prompt (its ids, types and lanes come from that prompt);
 // - the texts of the questions sent to the model (instructions, criteria and the
@@ -159,8 +160,40 @@ function scanJson(file: string, text: string): Finding[] {
   return out
 }
 
-export function scanText(file: string, text: string): Finding[] {
-  return file.endsWith('.json') ? scanJson(file, text) : scanLines(file, text)
+export function scanText(file: string, text: string, rowIds: ReadonlySet<string> = new Set()): Finding[] {
+  // A bench file that names dataset rows (the comment of a variants file citing the
+  // row a variant was written for) quotes recorded data: the ids are removed first.
+  const t = rowIds.size > 0 && /^bench\//.test(file) ? withoutRowIds(text, rowIds) : text
+  return file.endsWith('.json') ? scanJson(file, t) : scanLines(file, t)
+}
+
+const RE_ROW_ID = /[A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9]/g
+
+function withoutRowIds(text: string, ids: ReadonlySet<string>): string {
+  return text.replace(RE_ROW_ID, (m) => (ids.has(m) ? '' : m))
+}
+
+// The ids of the bench datasets' rows (bench/*.jsonl), which are recorded data.
+export function datasetRowIds(root: string, files: readonly string[]): Set<string> {
+  const ids = new Set<string>()
+  for (const file of files) {
+    if (!/^bench\/[^/]+\.jsonl$/.test(file)) continue
+    let text: string
+    try {
+      text = readFileSync(join(root, file), 'utf8')
+    } catch {
+      continue
+    }
+    for (const line of text.split('\n')) {
+      try {
+        const v: unknown = JSON.parse(line)
+        if (typeof v === 'object' && v !== null && typeof (v as { id?: unknown }).id === 'string') ids.add((v as { id: string }).id)
+      } catch {
+        // an empty or broken line has no id
+      }
+    }
+  }
+  return ids
 }
 
 // The tracked files, or every file under the root when it is not a git checkout.
@@ -185,7 +218,9 @@ export function listFiles(root: string): string[] {
 
 export function checkEnglish(root: string = ROOT): Finding[] {
   const out: Finding[] = []
-  for (const file of listFiles(root)) {
+  const files = listFiles(root)
+  const rowIds = datasetRowIds(root, files)
+  for (const file of files) {
     if (!TEXT_EXTENSIONS.test(file) || EXCLUDED.some((re) => re.test(file))) continue
     let text: string
     try {
@@ -193,7 +228,7 @@ export function checkEnglish(root: string = ROOT): Finding[] {
     } catch {
       continue                            // deleted in the working tree, or unreadable
     }
-    out.push(...scanText(file, text))
+    out.push(...scanText(file, text, rowIds))
   }
   return out
 }

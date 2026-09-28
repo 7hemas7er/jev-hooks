@@ -49,6 +49,14 @@ test('JSON: question texts and detector patterns are skipped, notes and labels a
   ])
 })
 
+test('a bench file may cite a dataset row id; the same words outside an id, or outside bench/, are still found', () => {
+  const id = `js-${THRESHOLD}-row`
+  const doc = JSON.stringify({ _comment: `missed ${id}; the ${THRESHOLD} stays` })
+  const ids = new Set([id])
+  assert.deepEqual(scanText('bench/variants-x.json', doc, ids).map((f) => f.word), [THRESHOLD])
+  assert.deepEqual(scanText('config/x.json', doc, ids).map((f) => f.word), [THRESHOLD, THRESHOLD])
+})
+
 test('the pragmas skip one line, the next line or a block', () => {
   const text = [
     `a ${THRESHOLD} // check-english: allow`,
