@@ -209,23 +209,35 @@ step-by-step guide for a DGX Spark: a systemd unit, a checked proxy configuratio
 ([`examples/spark/Caddyfile`](examples/spark/Caddyfile)), a real-decision test and the
 tailnet setup for GitHub Actions.
 
-### CLM-8B, self-hosted (not measured yet)
+### CLM-8B, self-hosted (measured: not recommended)
 
 [CLM](https://github.com/Contrastive-LM/CLM) (Apache-2.0, by Contrastive-LM) answers the
 same contract with a Qwen3-8B encoder served by vLLM and small projection heads that
-score each option against the state. jev-hooks works with it unchanged, as checked
-against CLM's own server app with its mock encoder; set the model to `clm-latest`. Two
-things to know first:
+score each option against the state. jev-hooks works with it unchanged; set the model
+to `clm-latest`. On a DGX Spark, next to rizzo, it was measured on the same dev bench
+and router prompts (`bench/results/2026-09-29-clm-dev`, `…-clm-router-dev`):
 
-- **It truncates instead of refusing.** Past `--max-tokens` (2048 by default) the head
-  of the state is cut with no error, so part of a chunk goes unreviewed without a note.
-  Serve it with 4096 on both vLLM and `clm-serve`.
-- **Its answers have not been measured on diffs.** They get the `clm-provisional`
-  calibration profile, with an unknown backend's wide band, and the thresholds still
-  come from rizzo. Until a bench run on CLM, its verdicts are indicative.
+| AUROC of the current wording | rizzo | CLM |
+|---|--:|--:|
+| `hardcoded_secret` | 0.925 | 0.372 |
+| `touches_auth` | 0.980 | 0.434 |
+| `injection_risk` | 0.994 | 0.666 |
+| `weakens_tests` | 0.994 | 0.851 |
+| `data_migration` | 1.000 | 0.525 |
+| router `has_error_evidence` | 1.000 | 0.522 |
+| router `risky_irreversible` | 1.000 | 0.672 |
 
-[docs/spark.md](docs/spark.md#7-clm-8b-instead-of-rizzo-not-measured-yet) has the
-commands and the proxy.
+Below 0.5 a question points the wrong way. Across the 44 wordings of the bench, CLM's
+best reaches 0.85, where rizzo's best reach 0.94 to 1.00 on every question but
+`description_matches` (0.66 for rizzo, 0.62 for CLM). With CLM the router answers
+"risky" to almost every prompt, so a session at high never goes lower. It is faster (median 0.57 s against 0.82 s on the
+dev bench, 0.26 s against 0.37 s on the router's prompts), but its heads were trained
+to score agent actions, not to read diffs. Keep rizzo; CLM gets the `clm-provisional`
+calibration profile, with an unknown backend's wide band, for whoever tries it anyway.
+It also truncates instead of refusing: past `--max-tokens` (2048 by default) the head
+of the state is cut with no error, so serve it with 4096 on both vLLM and `clm-serve`.
+[docs/spark.md](docs/spark.md#7-clm-8b-instead-of-rizzo-measured-not-recommended) has
+the commands.
 
 ### TypeSafe Jev, with your own key
 
