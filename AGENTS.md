@@ -46,7 +46,9 @@ They apply to every TypeScript file, and the tests enforce them.
    `node:*`, and without `@types/node` tsc would not understand it. The `claude-code`
    types that `hooks/register.ts` imports come from `/plugin-types`, written into
    `.claude/types/` (ignored by git): the declaration is large and trips the reviewer's
-   own detectors, so it is never committed.
+   own detectors, so it is never committed. CI therefore type-checks only the core,
+   with `tsconfig.core.json`; `hooks/register.ts` is checked locally after
+   `/plugin-types`.
 
 `hooks/register.ts` also obeys Claude Code's plugin scanner, which
 `claude plugin validate .claude-plugin/plugin.json` applies: `$` is never passed to an
@@ -90,13 +92,16 @@ bash -n hooks/run-node.sh
 claude plugin validate .                  # marketplace
 claude plugin validate .claude-plugin/plugin.json   # also lists what hooks/register.ts hooks, calls and reads
 node scripts/test-cc.ts                   # optional, needs the claude CLI: tests-cc/ in Claude Code's test kit
+npx --yes -p typescript@7.0.2 tsc -p tsconfig.core.json   # optional: the core's types (tsconfig.json after /plugin-types)
 ```
 
 Node ≥ 22.18 is required (type stripping on by default). The tests use neither the
 network nor a real backend, and they write only into temporary directories.
 `tests-cc/` runs only inside `claude plugin test`, which `scripts/test-cc.ts` points
 at a temporary copy of the plugin with the router on; without the CLI the script says
-so and exits 0. CI runs neither `claude` command.
+so and exits 0. The push CI (`test.yml`) runs neither `claude` command; the weekly
+`compat-claude-code.yml` installs the pinned and the latest Claude Code, runs both
+`validate` commands and `scripts/test-cc.ts`, and opens an issue when one fails.
 
 ## Security
 

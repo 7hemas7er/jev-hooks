@@ -36,3 +36,14 @@ jobs:
           VERDICT: ${{ steps.review.outputs.verdict }}
           CONCLUSION: ${{ steps.review.outputs.conclusion }}
         run: test "$VERDICT" = BLOCK && test "$CONCLUSION" = failure
+  # tsc as a development tool, never at run time: the pure core only. hooks/register.ts
+  # imports module 'claude-code', whose declarations /plugin-types writes on a developer's
+  # machine and which are never committed (AGENTS.md, rule 6).
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "24" }
+      - run: npx --yes -p typescript@7.0.2 tsc -p tsconfig.core.json

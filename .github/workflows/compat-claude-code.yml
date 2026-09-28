@@ -1,0 +1,53 @@
+# Function hooks are early access: their API, the plugin scanner and the test kit can
+# change in any Claude Code release, and nothing in this repo would notice until a
+# user's session broke. Every week (and on demand) this job installs the version the
+# plugin was last verified on and the latest one, validates the plugin and the
+# marketplace, and runs tests-cc/ in Claude Code's own test kit. None of it needs
+# credentials. A failure on latest opens an issue, once.
+name: compat-claude-code
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compat:
+    strategy:
+      fail-fast: false
+      # 2.1.284: the release the skills, the guard and the router were last checked on live
+      matrix: { claude: ["2.1.284", "latest"] }
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "24" }
+      - name: Install Claude Code ${{ matrix.claude }} with the official installer
+        env: { VERSION: "${{ matrix.claude }}" }
+        run: |
+          curl -fsSL https://claude.ai/install.sh -o "$RUNNER_TEMP/install.sh"
+          bash "$RUNNER_TEMP/install.sh" "$VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - id: version
+        run: echo "installed=$(claude --version | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - run: claude plugin validate .claude-plugin/plugin.json
+      - run: claude plugin validate .
+      - run: node scripts/test-cc.ts
+  report:
+    needs: compat
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions: { issues: write }
+    steps:
+      - name: Open an issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Compatibility with the latest Claude Code release failed"
+          if [ -z "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number')" ]; then
+            gh issue create --title "$title" --body "The weekly compatibility job failed: $RUN_URL. It validates the plugin and runs tests-cc/ in Claude Code's test kit, for the pinned release and for latest; the run shows which one broke."
+          fi
