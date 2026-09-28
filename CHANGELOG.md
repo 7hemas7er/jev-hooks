@@ -3,7 +3,9 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
-## Unreleased
+## 0.4.0 — 2026-09-28
+
+The review moves into CI too, as a check run a fork cannot steer.
 
 ### Added
 
