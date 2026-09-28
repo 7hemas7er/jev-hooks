@@ -404,6 +404,12 @@ router's rules: this set is for choosing thresholds and rules, not for claiming 
 well the router does. That needs a holdout set written by someone who has not seen the
 rules.
 
+`router-holdout.jsonl` is that set: 120 prompts (60 Italian, 60 English) written and
+labelled on 2026-09-28 by a separate agent that was given only the question criteria
+and the effort definitions above, never `router.json`'s rules, the dev set or its
+measurement. It was committed before being measured, and it is measured once to check a
+configuration chosen on the dev set, never to choose one.
+
 ### Measuring and replaying
 
 ```bash
