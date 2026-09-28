@@ -1668,8 +1668,14 @@ export function overlayPolicy(
           addProblem(l, childPointer(p, 'name'), `unknown lane ${quoteFor(l, name)} (lanes: ${laneNames.join(', ')}): the project cannot add lanes`)
           return
         }
-        for (const field of ['exit_code', 'color', 'hook', 'ci']) {
-          if (c[field] !== undefined) ignore(childPointer(p, field), 'from the project a lane can only change its rules')
+        for (const field of ['exit_code', 'color', 'hook']) {
+          if (c[field] !== undefined) ignore(childPointer(p, field), 'from the project a lane can only change its rules and make its CI conclusion more severe')
+        }
+        // a stricter conclusion in CI (SECURITY REVIEW as failure) only tightens
+        if (c.ci !== undefined) {
+          const v = readOneOf(l, c.ci, childPointer(p, 'ci'), CONCLUSIONS)
+          if (v && CI_SEVERITY.indexOf(v) > CI_SEVERITY.indexOf(lanes[k].ci)) lanes[k] = { ...lanes[k], ci: v }
+          else if (v && v !== lanes[k].ci) ignore(childPointer(p, 'ci'), 'from the project a CI conclusion can only be made more severe')
         }
         if (c.rules === undefined) return
         const pr = childPointer(p, 'rules')

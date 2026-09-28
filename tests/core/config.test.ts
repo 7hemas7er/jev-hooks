@@ -778,6 +778,20 @@ test('overlayPolicy does not modify the base', () => {
   assert.equal(JSON.stringify(base, (_, v) => (v instanceof RegExp ? String(v) : v)), before)
 })
 
+test('project: a lane\'s CI conclusion can be made more severe, never milder; its other fields stay', () => {
+  const base = policy()
+  const lane = (p: Policy, name: string) => p.lanes.find((x) => x.name === name)
+  const up = overlayPolicy(base, { lanes: [{ name: 'SECURITY REVIEW', ci: 'failure', hook: 'deny', exit_code: 9 }] }, checks(), 'p.json')
+  assert.equal(lane(up.policy, 'SECURITY REVIEW')?.ci, 'failure')
+  assert.equal(lane(up.policy, 'SECURITY REVIEW')?.hook, 'ask')
+  assert.equal(lane(up.policy, 'SECURITY REVIEW')?.exit_code, 2)
+  assert.ok(up.notes.some((n) => /\/lanes\/0\/hook/.test(n)), up.notes.join('\n'))
+  const down = overlayPolicy(base, { lanes: [{ name: 'BLOCK', ci: 'success' }] }, checks(), 'p.json')
+  assert.equal(lane(down.policy, 'BLOCK')?.ci, 'failure')
+  assert.ok(down.notes.some((n) => /can only be made more severe/.test(n)), down.notes.join('\n'))
+  assert.equal(lane(base, 'SECURITY REVIEW')?.ci, 'neutral')
+})
+
 // ─── Project texts in the warnings ────────────────────────────────────────────
 
 test('provenance: a project checks.json is marked fromProject, user and plugin ones are not', () => {
