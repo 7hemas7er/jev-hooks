@@ -6,6 +6,9 @@
 // ends in an error), an invalid JSON in config/ (the reviewer does not start).
 //
 // Usage: node scripts/validate-manifest.ts [root]   (exit 1 if there is a problem)
+//        node scripts/validate-manifest.ts --help
+// An option other than --help, or a second root, is refused with exit 2: "--help"
+// taken as a root used to fail with a list of missing files.
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +17,21 @@ import { formatProblem, parseJson } from '../src/core/json.ts'
 
 type PlainObject = Record<string, unknown>
 
-const root = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..'))
+const USAGE = `usage: node scripts/validate-manifest.ts [root]
+
+Checks .claude-plugin/plugin.json, .claude-plugin/marketplace.json, hooks/hooks.json
+and config/*.json under root (default: this repo). Exit 1 if there is a problem.`
+
+const args = process.argv.slice(2)
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(USAGE)
+  process.exit(0)
+}
+if (args.length > 1 || args.some((a) => a.startsWith('-'))) {
+  console.error(`validate-manifest: unexpected arguments ${JSON.stringify(args)}\n${USAGE}`)
+  process.exit(2)
+}
+const root = resolve(args[0] ?? join(dirname(fileURLToPath(import.meta.url)), '..'))
 const problems: string[] = []
 const done: string[] = []
 

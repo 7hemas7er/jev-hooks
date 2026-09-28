@@ -5,6 +5,9 @@
 //
 // Usage: node scripts/generate-defaults.ts          rewrites the file
 //        node scripts/generate-defaults.ts --check  exit 1 if the file does not match (CI)
+//        node scripts/generate-defaults.ts --help
+// Any other argument is refused with exit 2: a mistyped --check would otherwise
+// rewrite the file and pass.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -34,7 +37,21 @@ export function expectedDefaults(): string {
   )
 }
 
-function main(argv: string[]): number {
+export const USAGE = `usage: node scripts/generate-defaults.ts [--check]
+
+Writes src/core/defaults.ts from config/router.json and config/calibration.json.
+--check  write nothing; exit 1 if the file does not match the JSON (CI)`
+
+export function main(argv: readonly string[], out: (s: string) => void = (s) => console.log(s), err: (s: string) => void = (s) => console.error(s)): number {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    out(USAGE)
+    return 0
+  }
+  const unknown = argv.filter((a) => a !== '--check')
+  if (unknown.length > 0) {
+    err(`generate-defaults: unknown argument ${JSON.stringify(unknown[0])}\n${USAGE}`)
+    return 2
+  }
   const text = expectedDefaults()
   if (argv.includes('--check')) {
     let current = ''
@@ -44,14 +61,14 @@ function main(argv: string[]): number {
       current = ''
     }
     if (current !== text) {
-      console.error('src/core/defaults.ts does not match config/router.json and config/calibration.json: run node scripts/generate-defaults.ts again')
+      err('src/core/defaults.ts does not match config/router.json and config/calibration.json: run node scripts/generate-defaults.ts again')
       return 1
     }
-    console.log('ok src/core/defaults.ts')
+    out('ok src/core/defaults.ts')
     return 0
   }
   writeFileSync(TARGET, text)
-  console.log('wrote src/core/defaults.ts')
+  out('wrote src/core/defaults.ts')
   return 0
 }
 

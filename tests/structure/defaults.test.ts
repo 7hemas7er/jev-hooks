@@ -3,12 +3,13 @@
 // truth stays the JSON: this test fails if someone changes one without the other.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_CALIBRATION, DEFAULT_ROUTER } from '../../src/core/defaults.ts'
 import { validateCalibration, validateRouter } from '../../src/core/config.ts'
-import { expectedDefaults, TARGET } from '../../scripts/generate-defaults.ts'
+import { expectedDefaults, main, TARGET, USAGE } from '../../scripts/generate-defaults.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const json = (rel: string): unknown => JSON.parse(readFileSync(join(root, rel), 'utf8'))
@@ -28,4 +29,26 @@ test('the defaults pass validation, as the router reads them', () => {
   if (!k.ok) return
   const r = validateRouter(DEFAULT_ROUTER, k.value, 'router.json (default)')
   assert.ok(r.ok, r.ok ? '' : r.error.message)
+})
+
+test('generate-defaults: --help prints the usage, an unknown argument is refused without writing', () => {
+  const before = statSync(TARGET).mtimeMs
+  const out: string[] = []
+  const err: string[] = []
+  assert.equal(main(['--help'], (s) => out.push(s), (s) => err.push(s)), 0)
+  assert.deepEqual(out, [USAGE])
+  // a typo of --check must not fall through to rewriting the file
+  assert.equal(main(['--chek'], (s) => out.push(s), (s) => err.push(s)), 2)
+  assert.match(err.join('\n'), /unknown argument "--chek"/)
+  assert.equal(statSync(TARGET).mtimeMs, before)
+})
+
+test('validate-manifest: --help exits 0, an option or a second root exits 2', () => {
+  const run = (...args: string[]) => spawnSync(process.execPath, [join(root, 'scripts', 'validate-manifest.ts'), ...args], { encoding: 'utf8' })
+  const help = run('--help')
+  assert.equal(help.status, 0)
+  assert.match(help.stdout, /^usage: node scripts\/validate-manifest\.ts \[root\]/)
+  assert.equal(run('--strict').status, 2)
+  assert.equal(run(root, root).status, 2)
+  assert.equal(run(root).status, 0)
 })
