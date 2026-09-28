@@ -133,8 +133,13 @@ export function validateBody(c: RequestBody): Problem[] {
 interface ErrorDetail {
   entries?: number
   overflow?: { question: string; tokens: number; limit: number }
+  unknownModel?: boolean
   engine: boolean
 }
+
+// CLM's server (clm-serve) answers a model it does not serve with a 422 whose detail
+// starts with this phrase; rizzo-flow uses a 400 for the same mistake.
+const RE_UNKNOWN_MODEL = /^unknown model\b/
 
 function errorDetail(text: string, questions: readonly string[]): ErrorDetail {
   let v: unknown
@@ -152,6 +157,7 @@ function errorDetail(text: string, questions: readonly string[]): ErrorDetail {
     const question = questions.includes(m[1]) ? m[1] : ''
     return { overflow: { question, tokens: Number(m[2]), limit: Number(m[3]) }, engine: false }
   }
+  if (RE_UNKNOWN_MODEL.test(d)) return { unknownModel: true, engine: false }
   return { engine: d.includes('llama_decode') }
 }
 
@@ -192,6 +198,7 @@ export function classifyStatus(status: number, text: string, key: string, questi
     // ValueError from rizzo's engine (also "the context is full"): it is not the user's
     // configuration, and the user must not be invited to fix it
     if (d.engine) return { kind: 'server', message: 'backend engine error (HTTP 422)' }
+    if (d.unknownModel) return { kind: 'config', message: 'the backend does not serve the requested model (HTTP 422): CLM serves clm-latest; set it as the model' }
     const items = d.entries !== undefined && d.entries > 0 ? `: ${d.entries} ${d.entries === 1 ? 'problem reported' : 'problems reported'}` : ''
     return { kind: 'config', message: `request not valid for the backend (HTTP 422${items})` }
   }

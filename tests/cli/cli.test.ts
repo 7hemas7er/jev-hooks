@@ -326,7 +326,7 @@ test('explain: unknown check or profile → exit 4 with the list', async () => {
   assert.match(a.err, /hardcoded_secret, injection_risk/)
   const b = await jev(['explain', 'hardcoded_secret', '--profile', 'dunno'])
   assert.equal(b.code, 4)
-  assert.match(b.err, /rizzo-provisional, jev, unknown/)
+  assert.match(b.err, /rizzo-provisional, jev, clm-provisional, unknown/)
 })
 
 test('status: GET /v1/models plus a real decision', async () => {

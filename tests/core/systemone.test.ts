@@ -267,6 +267,15 @@ test('classifyStatus: a 422 with llama_decode is an engine error, not a configur
   assert.doesNotMatch(e?.message ?? '', /configur/)
 })
 
+test('classifyStatus: CLM\'s 422 for a model it does not serve names clm-latest, and none of the detail', () => {
+  const e = classifyStatus(422, JSON.stringify({ detail: "unknown model 'jev-latest'; available: ['clm-latest', 'clm-raw']" }), KEY)
+  assert.equal(e?.kind, 'config')
+  assert.match(e?.message ?? '', /does not serve the requested model \(HTTP 422\).*clm-latest/)
+  assert.doesNotMatch(e?.message ?? '', /jev-latest|clm-raw|available/)
+  // anchored: the phrase inside another detail is not the same mistake
+  assert.match(classifyStatus(422, '{"detail":"invalid request: unknown model field"}', KEY)?.message ?? '', /request not valid/)
+})
+
 test('classifyStatus: from a Pydantic-style 422 only how many entries it has, never input, msg or type', () => {
   const canary = 'CANARY-DIFF-LINE'
   const body = JSON.stringify({ detail: [

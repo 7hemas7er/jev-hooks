@@ -37,6 +37,13 @@
       "note": "TypeSafe declares calibrated probabilities: identity. Not verified on diffs."
     },
     {
+      "name": "clm-provisional",
+      "match": { "model_prefix": "clm-" },
+      "calibrated": false,
+      "band_delta_logit": 1.39,
+      "note": "CLM (Contrastive-LM, clm-serve): a Qwen3-8B encoder with projection heads, whose answer is a softmax over the question's own options, not a calibrated probability. Not measured on diffs: the thresholds of policy.json come from rizzo and the wide band of an unknown backend applies until a bench run on CLM (bench/MEASUREMENT.md). CLM truncates a state longer than --max-tokens (2048 by default) from the front, with no error: serve it with 4096 (docs/spark.md)."
+    },
+    {
       "name": "unknown",
       "match": {},
       "calibrated": false,

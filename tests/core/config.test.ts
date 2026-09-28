@@ -53,7 +53,7 @@ test('the four default JSON files are valid', () => {
   const pem = p.detectors.find((d) => d.name === 'private_key')
   assert.equal(pem?.exclude_paths, p.test_paths, '"test_paths" resolves to the test_paths regexes')
   const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
-  assert.deepEqual(k.profiles.map((x) => x.name), ['spark-bf16-2026-09', 'rizzo-provisional', 'jev', 'unknown'])
+  assert.deepEqual(k.profiles.map((x) => x.name), ['spark-bf16-2026-09', 'rizzo-provisional', 'jev', 'clm-provisional', 'unknown'])
   // the wordings measured on the bench: five choices with a value of 1 − p(none), none first
   assert.deepEqual(c.order.filter((id) => c.defs[id].value), ['injection_risk', 'weakens_tests', 'adds_tests', 'breaks_api', 'data_migration'])
   for (const id of c.order) {

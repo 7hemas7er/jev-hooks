@@ -306,6 +306,11 @@ test('profile choice: a fingerprint profile first, before the prefix, then model
   assert.equal(chooseProfile(c, { ...RIZZO, fingerprint: undefined }, POLICY.band).profile.name, 'rizzo-provisional')
   assert.equal(chooseProfile(c, JEV, POLICY.band).profile.name, 'jev')
   assert.equal(chooseProfile(c, OTHER, POLICY.band).profile.name, 'unknown')
+  // CLM: its own name and note, with the unknown backend's wide band until it is measured
+  const clm = chooseProfile(c, { host: '192.168.1.50:8700', model: 'clm-latest', family: 'other' }, POLICY.band)
+  assert.equal(clm.profile.name, 'clm-provisional')
+  assert.equal(clm.profile.calibrated, false)
+  assert.equal(clm.profile.band_delta_logit, chooseProfile(c, OTHER, POLICY.band).profile.band_delta_logit)
   // host: every match field must hold, and the host is case-insensitive
   const perHost: Calibration = {
     wide_delta_logit: 1.39, file: 'c.json',
