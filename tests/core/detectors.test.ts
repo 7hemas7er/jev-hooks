@@ -98,6 +98,14 @@ test('every default detector on positives and negatives', () => {
     ['secret_assignment', 'src/settings.py', 'PASSWORD = "changeme-changeme-123"', false],
     ['secret_assignment', 'src/settings.py', `SECRET_KEY = "${'a'.repeat(24)}"`, false],
     ['secret_assignment', 'tests/test_settings.py', `SECRET_KEY = "${v}"`, false],
+    // a member access or a call is code, not a literal: seen live on usage counters
+    ['secret_assignment', 'src/core/usage.ts', '  cache_read_input_tokens: u.cache_read_input_tokens,', false],
+    ['secret_assignment', 'src/usage.py', 'input_tokens = response.usage.input_tokens', false],
+    ['secret_assignment', 'src/auth.ts', 'const accessToken = issueAccessTokenFor(user)', false],
+    ['secret_assignment', 'src/auth.py', 'refresh_token = tokens[REFRESH_TOKEN_FIELD]', false],
+    // …while a dotted literal with digits (a JWT) and a quoted dotted string stay hits
+    ['secret_assignment', 'config/app.yml', `  token: ${v}.${v}0`, true],
+    ['secret_assignment', 'src/settings.py', 'SECRET_KEY = "QmxWvtRzkPndHyfJcsLb.TgqVhs"', true],
     ['url_with_credentials', 'src/db.py', `DATABASE_URL = "postgres://app:${random(16)}@db:5432/app"`, true],
     ['url_with_credentials', 'src/db.py', 'DATABASE_URL = "postgres://app:changeme123@db:5432/app"', false],
     ['url_with_credentials', 'src/db.py', 'DATABASE_URL = "postgres://app:aaaaaaaaaa@db:5432/app"', false],

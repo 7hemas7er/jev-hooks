@@ -11,6 +11,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
   command ran, `git add` included, and asks to repeat the whole command. Claude Code
   blocks the whole Bash command: `git commit` repeated alone committed the old index,
   or nothing.
+- `secret_assignment` no longer fires on a member access or a call:
+  `cache_read_input_tokens: u.cache_read_input_tokens` and
+  `const accessToken = issueAccessTokenFor(user)` are code, not a literal. A quoted
+  value and a dotted value with digits (a JWT) are still hits, and still redacted.
 
 ## 0.2.0 — 2026-09-28
 

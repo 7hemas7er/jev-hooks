@@ -96,7 +96,7 @@
       "floor": "BLOCK", "escalate": "if_model_disagrees" },
     { "name": "secret_assignment", "label": "High-entropy value assigned to a secret-like name", "check": "hardcoded_secret", "where": ["added_lines"],
       "regex": "\\b[A-Za-z0-9_]*(secret|token|passw(or)?d|api[_-]?key|private[_-]?key|signing[_-]?key|access[_-]?key)[A-Za-z0-9_]*[\"']?\\s*(:=|=>|[:=])\\s*[\"']?[^\"'\\s,;]{16,}", "flags": "i",
-      "min_entropy": 3.5, "ignore_values": "(?:example|changeme|your[-_]|placeholder|dummy|fake|x{6,}|<[^>]+>|os\\.environ|getenv|process\\.env|settings\\.|config\\.|ENV\\[|\\$\\{)",
+      "min_entropy": 3.5, "ignore_values": "(?:example|changeme|your[-_]|placeholder|dummy|fake|x{6,}|<[^>]+>|os\\.environ|getenv|process\\.env|settings\\.|config\\.|ENV\\[|\\$\\{|(?::=|=>|[:=])\\s*[A-Za-z_$]+\\.[A-Za-z_$.]*[)\\]}]*$|(?::=|=>|[:=])\\s*[A-Za-z_$][A-Za-z_$.]*[(\\[])",
       "exclude_paths": "test_paths", "floor": null, "escalate": "if_model_disagrees" },
     { "name": "url_with_credentials", "label": "URL with user and password", "check": "hardcoded_secret", "where": ["added_lines"],
       "regex": "\\b[a-z][a-z0-9+.-]{1,20}://[^\\s/:@]{1,64}:([^\\s@/]{8,})@", "flags": "i",
