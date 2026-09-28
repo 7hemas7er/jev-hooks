@@ -3,14 +3,14 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
-## Unreleased
+## 0.2.0 — 2026-09-28
 
 The per-turn effort router, planned since the preview, is built. It is off unless you
 turn it on: a change of effort keeps the prompt cache only on Opus 5.5 or Fable 5.1
 with the per-turn-control beta on the account, and the plugin cannot see the beta. It
 has run in Claude Code's own test kit, on a fake engine and in one live headless session,
 where the effort it set reached the API request and the prompt cache survived the change
-(README → Limitations). The release commit gives this section its version.
+(README → Limitations).
 
 ### Added
 
