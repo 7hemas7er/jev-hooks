@@ -3,6 +3,15 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
+## Unreleased
+
+### Fixed
+
+- `secret_assignment` also skips a member access quoted as code in a commit message or
+  in Markdown: ``` `cache_read_input_tokens: u.cache_read_input_tokens` ``` fired
+  because of the closing backtick. A dotted value with digits between backticks is
+  still a hit.
+
 ## 0.2.1 — 2026-09-28
 
 The commit reviewer after its first day of live use on this repo: fewer questions sent
