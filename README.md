@@ -17,13 +17,12 @@ backend answers seven questions about each prompt you type, and `config/router.j
 turns the answers into the effort of that turn, never above the one your session asks
 for. A rename does not need the reasoning a design question needs.
 
-> **Status: public preview.** The commit reviewer and the `jev-review` CLI work. The
+> **Status: public preview.** The commit reviewer, the `/jev-review` and `/jev-status`
+> skills and the `jev-review` CLI work. The
 > effort router is built, opt-in and early access: it runs on Claude Code's function
 > hooks, and one live run on Claude Code 2.1.283 has shown the effort it sets reaching
 > the API request and the prompt cache surviving the change (README → Limitations).
-> About 850 offline tests cover the
-> three. The GitHub Action and the `/jev-review` and `/jev-status` skills are designed
-> but not built yet. The reviewer's thresholds come from a small synthetic bench (below)
+> About 870 offline tests cover them. The GitHub Action is designed but not built yet. The reviewer's thresholds come from a small synthetic bench (below)
 > and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
 
 ## Why typed decisions
@@ -59,8 +58,8 @@ Three question types, as in Jev:
 | Commit log (`PostToolUse` hook) | **works** | Records whether a reviewed commit actually happened, for later calibration |
 | `jev-review` CLI | **works** | `review`, `explain <check>`, `status`, from your own terminal |
 | Question bench and policy simulator | **works** | `bench/`, `scripts/measure-questions.ts`, `scripts/simulate-policy.ts` |
-| `/jev-review` and `/jev-status` skills | planned | Review on demand, served by a hook so it runs outside the sandbox |
-| Guard on `.jev-hooks/` edits | planned | Asks before Claude edits the project's reviewer rules |
+| `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
+| Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
 | GitHub Action | planned | Two-phase review of pull requests, safe for forks |
 
@@ -127,6 +126,28 @@ What the hook does per lane:
 The hook is a safety net, not a barrier: it sees commits that Claude makes with its
 Bash tool, not the ones you make in your own terminal, not commits hidden behind a
 script or an alias. The planned GitHub Action is where a required check belongs.
+
+### On demand: `/jev-review` and `/jev-status`
+
+```
+/jev-hooks:jev-review                   staged changes, else uncommitted ones, else the branch against main
+/jev-hooks:jev-review --staged          or --working, a git reference (origin/main, HEAD~3),
+                                        or a .diff or .patch file inside the repo
+/jev-hooks:jev-status                   the backend, the model, one real decision, the profile
+```
+
+Claude's sandbox cannot reach your LAN and does not hold the key, so neither skill runs
+anything through Bash. A command hook does the work outside the sandbox, on both routes:
+when you type the command (`UserPromptExpansion`) and when Claude invokes the skill by
+itself (`PreToolUse` on the Skill tool). The skill receives the same data block the
+commit hook gives Claude, and its instructions say to report the verdict as computed,
+to look deeper only at the escalation items, and to change nothing without asking you.
+Arguments are validated on both routes, since Claude writes them in the second:
+anything else is refused as an invalid argument, and never echoed back. The review
+uses the same configuration as the commit hook, including the HEAD version of
+`.jev-hooks/` rules you have modified and not committed, and it is logged with origin
+`skill`. Neither skill ever blocks: an error (backend not configured, not a git repo)
+comes back as data for Claude to explain.
 
 ## Backends
 
@@ -286,8 +307,8 @@ same origin still carries the key. The body is another matter: on a 307 or 308 t
 request is sent again with its body, your prompt, to any http or https origin, see
 [Which backend](#which-backend).
 
-Check the setup from your own terminal (Claude's sandbox cannot reach your LAN, which is
-why the planned skills run inside a hook):
+Check the setup with `/jev-hooks:jev-status` in a new session, or from your own terminal
+(Claude's sandbox cannot reach your LAN, which is why the skills run inside a hook):
 
 ```bash
 bin/jev-review.mjs status --url http://192.168.1.50:8017   # from a clone
@@ -318,7 +339,9 @@ Then start a new session: the open one keeps the old hooks.
 The reviewer: `commit_review: false` in `/plugin`, or `"hook": {"enabled": false}` in
 your user `policy.json`. The effort router: `effort_router: false` (its default),
 `JEV_HOOKS_ROUTER=0`, or `"enabled": false` in your user or the project's
-`router.json` ([more](#switches)). `JEV_HOOKS_DISABLE=1` turns off both. If you also
+`router.json` ([more](#switches)). The skills run only when asked, whatever
+`commit_review` says. `JEV_HOOKS_DISABLE=1` turns off everything: the reviewer, the
+skills (they answer that the plugin is off), the guard and the router. If you also
 run Anthropic's security-guidance plugin, it reviews `git commit` too: keep both, or
 switch one off.
 
