@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-29
+
+A second backend measured and set aside, and the checks that were still only on paper
+run live: a broken router module, Esc during its wait, and the Action on real pull
+requests.
+
 ### Added
 
 - CLM-8B as a backend: a `clm-provisional` calibration profile (not measured, an
@@ -12,7 +18,6 @@ a release is a separate `chore(release): X.Y.Z` commit.
   requested model (set `clm-latest`), and a step in `docs/spark.md` on serving it
   without its silent truncation of long states. Measured on the Spark against the dev
   bench and the router's prompts, it separates far worse than rizzo: not recommended.
-
 - `docs/spark.md`: rizzo-flow on a DGX Spark, step by step, with
   `examples/spark/Caddyfile`, a proxy that lets through only `POST /v1/systemone` and
   `GET /v1/models` with the token. The file passes `caddy validate` (a test runs it when
@@ -24,6 +29,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
   plugin, runs `tests-cc/` in its test kit and type-checks `hooks/register.ts` against
   that release's `/plugin-types`, opening an issue when one fails; and a type-check of
   the core with TypeScript 7 on every push.
+
+### Fixed
+
+- `scripts/generate-defaults.ts` and `scripts/validate-manifest.ts` take `--help`, and
+  refuse any other unknown argument: a mistyped `--check` used to rewrite
+  `src/core/defaults.ts` and pass.
 
 ## 0.4.0 — 2026-09-28
 
