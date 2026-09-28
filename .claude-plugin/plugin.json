@@ -1,6 +1,6 @@
 {
   "name": "jev-hooks",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Commit reviewer and per-turn effort router with typed questions (Jev or rizzo-flow): commit hook, jev-review CLI and a function hook",
   "author": { "name": "7hemas7er" },
   "homepage": "https://github.com/7hemas7er/jev-hooks",

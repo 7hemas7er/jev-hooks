@@ -3,7 +3,9 @@
 All notable changes to jev-hooks. Versions follow [Semantic Versioning](https://semver.org/);
 a release is a separate `chore(release): X.Y.Z` commit.
 
-## Unreleased
+## 0.3.0 — 2026-09-28
+
+Review on demand, from Claude or from you, without leaving the sandbox's rules behind.
 
 ### Added
 
