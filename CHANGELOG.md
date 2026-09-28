@@ -15,6 +15,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
   `cache_read_input_tokens: u.cache_read_input_tokens` and
   `const accessToken = issueAccessTokenFor(user)` are code, not a literal. A quoted
   value and a dotted value with digits (a JWT) are still hits, and still redacted.
+- `weakens_tests` no longer sends a commit of documentation files only to Claude: its
+  rule has the `unless docs_only ≥ 0.50` that `adds_tests` already had. Two such
+  commits scored 0.25 and 0.28 in live use; the bench numbers are the same with and
+  without it.
 
 ## 0.2.0 — 2026-09-28
 

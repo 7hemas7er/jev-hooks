@@ -168,6 +168,12 @@ test('threshold: the unless cancels the escalation too, and an lte rule names th
     .map((v) => `${v.reason} ${v.check} ${v.p}`)
   assert.deepEqual(down(0), ['threshold adds_tests 0.01'])
   assert.deepEqual(down(1), [])
+  // the default policy puts it on weakens_tests: documentation alone cannot weaken a
+  // test, and two docs-only commits scored 0.25 and 0.28 in live use
+  const docs = (d: number): string[] => escalation({ weakens_tests: global(0.28), docs_only: { value: d, source: 'computed' } }, CHECKS, S, NO_HIT, plan(), POLICY)
+    .map((v) => `${v.reason} ${v.check} ${v.p}`)
+  assert.deepEqual(docs(0), ['threshold weakens_tests 0.28'])
+  assert.deepEqual(docs(1), [])
 })
 
 test('a rule in the lane and one with escalation on the same check: a chunk already sent to Claude does not also get the band', () => {
