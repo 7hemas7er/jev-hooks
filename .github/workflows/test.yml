@@ -17,3 +17,22 @@ jobs:
       - run: node scripts/check-english.ts
       # always with the glob: without arguments node --test also runs the helpers as main
       - run: node --test "tests/**/*.test.ts"
+  # The Action as GitHub runs it (node24 runtime, INPUT_* environment), in file mode:
+  # a live key composed by the demo generator must come out as BLOCK with no backend.
+  action-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "24" }
+      - run: node scripts/generate-demo.ts "$RUNNER_TEMP/jev-demo"
+      - id: review
+        uses: ./
+        with:
+          mode: file
+          diff-file: ${{ runner.temp }}/jev-demo/known-secret.diff
+      - env:
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          CONCLUSION: ${{ steps.review.outputs.conclusion }}
+        run: test "$VERDICT" = BLOCK && test "$CONCLUSION" = failure
