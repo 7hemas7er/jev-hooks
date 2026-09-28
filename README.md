@@ -153,9 +153,9 @@ comes back as data for Claude to explain.
 
 ## Backends
 
-Both backends speak the same contract, `POST /v1/systemone` with `{state, model,
+The backends speak the same contract, `POST /v1/systemone` with `{state, model,
 questions}`, and jev-hooks treats them the same way. They differ in where your diff
-goes.
+goes, and in how far their answers have been measured.
 
 ### rizzo-flow, self-hosted (recommended for private code)
 
@@ -208,6 +208,24 @@ or `http://100.64.0.10:8017` over Tailscale. [docs/spark.md](docs/spark.md) is a
 step-by-step guide for a DGX Spark: a systemd unit, a checked proxy configuration
 ([`examples/spark/Caddyfile`](examples/spark/Caddyfile)), a real-decision test and the
 tailnet setup for GitHub Actions.
+
+### CLM-8B, self-hosted (not measured yet)
+
+[CLM](https://github.com/Contrastive-LM/CLM) (Apache-2.0, by Contrastive-LM) answers the
+same contract with a Qwen3-8B encoder served by vLLM and small projection heads that
+score each option against the state. jev-hooks works with it unchanged, as checked
+against CLM's own server app with its mock encoder; set the model to `clm-latest`. Two
+things to know first:
+
+- **It truncates instead of refusing.** Past `--max-tokens` (2048 by default) the head
+  of the state is cut with no error, so part of a chunk goes unreviewed without a note.
+  Serve it with 4096 on both vLLM and `clm-serve`.
+- **Its answers have not been measured on diffs.** They get the `clm-provisional`
+  calibration profile, with an unknown backend's wide band, and the thresholds still
+  come from rizzo. Until a bench run on CLM, its verdicts are indicative.
+
+[docs/spark.md](docs/spark.md#7-clm-8b-instead-of-rizzo-not-measured-yet) has the
+commands and the proxy.
 
 ### TypeSafe Jev, with your own key
 

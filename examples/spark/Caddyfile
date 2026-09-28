@@ -53,3 +53,10 @@
 # 	bind 192.168.1.50
 # 	import rizzo 127.0.0.1:8019
 # }
+
+# CLM-8B (docs/spark.md, step 7): clm-serve on 127.0.0.1:8700, the same two routes
+# and the same token.
+# :8700 {
+# 	bind 192.168.1.50
+# 	import rizzo 127.0.0.1:8700
+# }

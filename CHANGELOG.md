@@ -7,6 +7,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ### Added
 
+- CLM-8B as a backend: a `clm-provisional` calibration profile (not measured, an
+  unknown backend's wide band), a clear message when the backend does not serve the
+  requested model (set `clm-latest`), and a step in `docs/spark.md` on serving it
+  without its silent truncation of long states.
+
 - `docs/spark.md`: rizzo-flow on a DGX Spark, step by step, with
   `examples/spark/Caddyfile`, a proxy that lets through only `POST /v1/systemone` and
   `GET /v1/models` with the token. The file passes `caddy validate` (a test runs it when

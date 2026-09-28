@@ -137,3 +137,65 @@ whose `:8017` site answers whatever `Host` the request carries. In the tailnet's
 let `tag:ci` reach only that port of the Spark. In the repository, set the variables
 `JEV_TAILSCALE=true` and `JEV_URL` (`https://<spark>.<tailnet>.ts.net:8443`), and the
 secrets `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` and `JEV_API_KEY` (the proxy's token).
+
+## 7. CLM-8B instead of rizzo (not measured yet)
+
+[CLM](https://github.com/Contrastive-LM/CLM) (Apache-2.0, by Contrastive-LM) serves the
+same `POST /v1/systemone` contract with another kind of model: a frozen Qwen3-8B encoder
+served by vLLM, and two small projection heads that score each option of a question
+against the state. jev-hooks talks to it unchanged: its answers have Jev's shape, the
+key is `CLM_API_KEY` (401 when wrong), and it counts as a backend of family `other`, so
+up to four requests go in parallel. That was checked against CLM's own server app
+(commit `bb42c6c`), with its mock encoder, for the 14 review questions and the 7 router
+questions. It has **not been run on a Spark yet**, and no answer of the real model has
+been measured on diffs.
+
+Four things differ from rizzo, and each one matters here:
+
+- **CLM truncates, rizzo refuses.** A state longer than `--max-tokens` (2048 by default)
+  is cut with no error, and vLLM keeps the **last** tokens: the question survives, the
+  head of the chunk (title, file names, the first lines of the diff) is dropped, and
+  nothing tells jev-hooks. Chunks are about 2000 estimated tokens plus up to about 100
+  of question, so 2048 is too tight. Raise both limits together to 4096.
+- **The model is `clm-latest`.** `jev-latest`, the plugin's default, gets a 422 that
+  `jev-review status` reports as a model the backend does not serve.
+- **The probabilities are not rizzo's.** Each answer is a softmax over the question's
+  own options, which CLM does not present as calibrated. `config/calibration.json` gives
+  it the `clm-provisional` profile, with an unknown backend's wide band, and the
+  thresholds of `policy.json` and `router.json` still come from rizzo: until a bench run
+  on CLM ([bench/MEASUREMENT.md](../bench/MEASUREMENT.md)) chooses its own, read its
+  verdicts as indicative. The deterministic detectors work the same on every backend.
+- **Two processes, both on loopback.** `clm-serve` binds `0.0.0.0` unless told
+  otherwise, and serves a playground at `/` and FastAPI's `/docs` without a key.
+
+```bash
+# the encoder: last-token pooling, as the reference head was trained
+vllm serve Qwen/Qwen3-8B --served-model-name qwen3-8b --runner pooling \
+  --enable-prefix-caching --max-model-len 4096 --gpu-memory-utilization 0.25 \
+  --host 127.0.0.1 --port 8090
+# the API: the heads are about 20M parameters and run on the CPU as well
+clm-serve --host 127.0.0.1 --port 8700 --max-tokens 4096 --no-ui \
+  --emb-url http://127.0.0.1:8090/v1/embeddings
+```
+
+On the Spark's unified memory, `--gpu-memory-utilization` is a share of the whole
+128 GB: about 16 GB of BF16 weights plus the cache, next to rizzo's 10 GB. Whether a
+pip wheel of vLLM runs on the GB10 (aarch64, CUDA) depends on the release; NVIDIA's vLLM
+container for DGX Spark is the safer start. `clm-serve` does not import vLLM, so it can
+live in its own venv (`pip install --no-deps contrastive-lm` plus numpy, requests,
+torch, fastapi and uvicorn) and reach the encoder over HTTP.
+
+In front of it, the same proxy: in the Caddyfile, a site `:8700` that imports the
+snippet with `127.0.0.1:8700` (commented out at the end of the file), and the same
+`ufw` rules for port 8700. The check of step 4 becomes:
+
+```bash
+curl -s http://192.168.1.50:8700/v1/systemone \
+  -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"model":"clm-latest","state":"The build failed with a stack trace.","questions":{"q":{"type":"noul","instructions":"Is there an error?"}}}'
+```
+
+The answer names the model `clm-latest` and carries no `x_rizzo`. In the plugin, set
+`review_url` to `http://192.168.1.50:8700` and `model` to `clm-latest` (the router uses
+the same option); `/jev-hooks:jev-status` should then show the `clm-provisional`
+profile.
