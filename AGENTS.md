@@ -7,9 +7,10 @@ router: a function hook (`hooks/register.ts`, early access, off unless the
 `effort_router` option is true) that asks the same backend what kind of request a
 prompt is and lowers that turn's effort. Its decisions are pure functions in
 `src/core/router.ts`; its questions and thresholds are in `config/router.json`. The
-README, this file and the comments in the code are the reference. The maintainer's
-design notes are not published (a local `.piano/` directory, ignored by git): read
-them if you have them, otherwise open an issue before changing the architecture.
+README, the pages in `docs/`, this file and the comments in the code are the
+reference. The maintainer's design notes are not published (a local `.piano/`
+directory, ignored by git): read them if you have them, otherwise open an issue before
+changing the architecture.
 
 ## Code rules
 

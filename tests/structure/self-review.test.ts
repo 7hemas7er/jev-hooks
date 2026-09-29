@@ -1,4 +1,4 @@
-// The README promises that the reviewer does not fire on its own repository: no
+// docs/security.md promises that the reviewer does not fire on its own repository: no
 // realistic secret, injection phrase, prompt delimiter or bidi control sits in a
 // tracked file, because the tests and the demo compose them at run time. This test
 // keeps the promise. It runs the detectors of the plugin's policy over every tracked

@@ -5,6 +5,15 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- The README keeps the overview (why typed decisions, what is in the box, a short
+  "How it works", a quick start and an index of the documentation); its long sections
+  moved verbatim to `docs/`: `docs/how-it-works.md`, `docs/backends.md`,
+  `docs/install.md`, `docs/action.md`, `docs/configuration.md`, `docs/router.md`,
+  `docs/limitations.md` and `docs/development.md`. The measured bench is now a section
+  of `docs/evaluation.md`, the security model the opening section of `docs/security.md`.
+
 ### Verified
 
 - A pull request from a fork: the second phase finds it, rizzo reviews its diff, the

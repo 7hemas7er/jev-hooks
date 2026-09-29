@@ -20,7 +20,7 @@
 //   header stays, plus a line that says which detectors hit;
 // - for the router, which has no policy: every token of at least 20 characters with
 //   an entropy of at least 4 bits per character.
-// A secret that no regex recognizes still goes out in plain text: the README says so,
+// A secret that no regex recognizes still goes out in plain text: docs/backends.md says so,
 // and for private repos it recommends a local rizzo.
 //
 // Pure (rule 4): randomness comes from outside (rnd, usually prng(seed) from

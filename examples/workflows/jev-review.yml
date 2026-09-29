@@ -12,7 +12,7 @@
 # a fork cannot imitate, set the variable JEV_APP_CLIENT_ID and the secret
 # JEV_APP_PRIVATE_KEY of a dedicated GitHub App (permission Checks: read and write, no
 # webhook, installed on this repository), and require "jev-review" from that app in
-# branch protection (README → GitHub Action).
+# branch protection (docs/action.md).
 name: jev-review
 on:
   workflow_run:

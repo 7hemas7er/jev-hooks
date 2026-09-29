@@ -63,6 +63,87 @@ effort.
 With about a hundred rows, an AUROC moves in visible jumps: differences of a few
 hundredths between two texts are noise.
 
+## The measured bench
+
+Before choosing a threshold you need to know whether a question separates at all.
+`bench/` holds hand-labelled synthetic diffs and the scripts that measure them
+(`bench/README.md`, `bench/MEASUREMENT.md`; the method, and the calibration still to
+do, in [docs/evaluation.md](#evaluation-protocol)):
+
+- **dev set**: 118 diffs, used to compare 44 wordings of the questions and to choose
+  thresholds;
+- **holdout set**: 121 new diffs, longer and spread over more files, written without
+  looking at the variants and frozen before being measured once, with the exact texts
+  of `checks.json`.
+
+Both were measured on 2026-09-26 against rizzo-flow with Spark-X2.5-4B BF16 on the DGX
+Spark (fingerprint `64219e54c725…`). The reports, raw answers and per-question hashes
+are in `bench/results/`.
+
+| Question | Form sent | AUROC dev | AUROC holdout | Rule in `policy.json` | dev TPR · FPR | holdout TPR · FPR |
+|---|---|--:|--:|---|---|---|
+| hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.10 → escalate | 0.78 (7/9) · 0.028 (3/109) | 0.91 (10/11) · 0.027 (3/110) |
+| injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
+| touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
+| weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.10 | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.037 (4/109) |
+| breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.057 (6/105) |
+| data_migration | choice, 1 − P(none) | 1.000 | 0.992 | ≥ 0.20, note | 1.00 (7/7) · 0.027 (3/111) | 1.00 (10/10) · 0.072 (8/111) |
+| debug_leftovers | noul | 0.994 | 0.966 | ≥ 0.40, note | 0.88 (7/8) · 0.027 (3/110) | 0.91 (10/11) · 0.036 (4/110) |
+| adds_tests (sent as "missing tests?") | choice, 1 − P(none) | 0.963 | 0.937 | ≤ 0.30 unless docs only, note | 0.74 (57/77) · 0.024 (1/41) | 0.83 (50/60) · 0.066 (4/61) |
+| description_matches | noul | 0.425 | 0.608 | none (informational) | — | — |
+
+AUROC is the probability that a diff with the problem gets a higher p than one without
+(1 separates perfectly, 0.5 is chance). TPR is the share of problems the rule catches;
+FPR is its false-alarm rate on diffs without that problem. Thresholds were chosen on the
+dev set to stay near 3% false alarms, then checked on the holdout set, where false
+alarms rose to 3–8% per question: that gap is the honest cost of choosing on a small
+set. Seen per commit, on the holdout set's 34 diffs with no labelled problem, none
+reached BLOCK or SECURITY REVIEW and 11 (32%) sent at least one question to Claude; on
+the dev set, 4 of 28 (14%).
+
+**Why `weakens_tests` asks twice.** In live use its wording fired on commits that only
+added or tightened tests, bumped CI pins or touched documentation. A second wording,
+`weakens_expected`, reads the diff line by line and says "none" unless a line shows the
+weakening; the rule escalates only when both see one. On a holdout set written blind
+for this check (`bench/results/2026-09-29-holdout-weakens`, 60 diffs, 29 of them hard
+negatives of those shapes) the pair keeps 15 of 16 positives, as the first wording
+alone, with 4 false alarms in 44 instead of 10. It costs one more question per chunk.
+A `checks.json` of yours that predates `weakens_expected` keeps working: that
+condition is dropped with a note, and the rule fires as it did before.
+
+**Why the model never blocks on its own (policy v2).** With the first policy, where
+model rules could reach BLOCK, 10 of the holdout's 34 clean diffs were blocked. Eight
+questions with a few percent of false alarms each add up, and a hard stop on a wrong
+guess teaches people to disable the tool. So BLOCK and SECURITY REVIEW come only from
+deterministic detectors, which are precise about what they see, and the model's critical
+questions escalate to Claude, which can read the code and costs you nothing when it
+agrees.
+
+**Why `description_matches` is not used.** "Does the description leave something out or
+make something up?" is the hardest question for a model that reads literally and answers
+with one letter: no wording went above AUROC 0.662 on the dev set, and the one in
+`checks.json` scores 0.425 there and 0.608 on the holdout set, with a mean p of 0.95 on
+faithful descriptions. It is still asked and shown, but no rule depends on it.
+
+**Why "none first" choices.** Five questions moved from yes/no to "which of these, or
+none?", because the yes/no texts said yes to clean diffs (mean p on negatives 0.94 for
+`breaks_api`, 0.72 for `adds_tests`, 0.57 for `data_migration`); as choices those drop to
+0.18, 0.10 and 0.02. rizzo reads the options as letters A, B, C… in the order written and
+does not correct position bias, so the order matters: `injection_risk` with `none` as
+option A scores AUROC 1.000 and a mean p of 1.000 on real problems, the same text with
+`none` last scores 0.965 and 0.314. The option order is therefore part of each question's
+hash.
+
+**Why the questions are in English.** rizzo's quality has been measured only in English,
+and Jev's main language is English. The bench confirms it: Italian twins of the same
+questions, with identical code examples, scored lower (`injection_risk` 0.752 against
+0.920; `debug_leftovers` 0.982 against 0.994). The diffs themselves can be in any
+language: most of the bench's commit titles and descriptions are in Italian on purpose.
+
+The question texts are bound to the hashes recorded in `config/calibration.json` and in
+the reports. Change one byte, even the order of a choice's options, and the output tells
+you that the thresholds no longer apply to that question until you measure again.
+
 ## What has been measured
 
 - **The reviewer's questions**, on dev and holdout (`bench/results/2026-09-26-*`): the

@@ -3,7 +3,7 @@
 A step-by-step setup of the backend jev-hooks was developed against: rizzo-flow serving
 Spark-X2.5-4B as GGUF BF16 on an NVIDIA DGX Spark, reachable from your LAN or tailnet
 through a proxy that lets through only what jev-hooks needs. The timings measured on
-that machine are in the README ([rizzo-flow, self-hosted](../README.md#rizzo-flow-self-hosted-recommended-for-private-code)).
+that machine are in [rizzo-flow, self-hosted](backends.md#rizzo-flow-self-hosted-recommended-for-private-code).
 
 Addresses here are examples: `192.168.1.50` stands for the Spark's LAN address and
 `100.64.0.10` for its Tailscale address.
@@ -170,8 +170,8 @@ up to four requests go in parallel. That was checked against CLM's own server ap
 questions. On the Spark it runs next to rizzo with the commands below (vLLM 0.21.0,
 torch 2.11 for CUDA 13, on the GB10), and it was measured there: on this bench it
 separates far worse than rizzo, two review questions point the wrong way, and the
-router's `risky_irreversible` fires on almost every prompt (the README has the numbers,
-`bench/results/2026-09-29-clm-dev` and `…-clm-router-dev` the reports). Keep rizzo
+router's `risky_irreversible` fires on almost every prompt ([CLM-8B, self-hosted](backends.md#clm-8b-self-hosted-measured-not-recommended) has the
+numbers, `bench/results/2026-09-29-clm-dev` and `…-clm-router-dev` the reports). Keep rizzo
 for jev-hooks; this step stays for whoever wants to repeat the measurement.
 
 Four things differ from rizzo, and each one matters here:
