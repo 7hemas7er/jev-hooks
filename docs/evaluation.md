@@ -192,6 +192,26 @@ bench does not have in quantity:
 - **Redo** after any change of question text, quantization, llama.cpp release or state
   shape.
 
+A first attempt (2026-09-29) joined the hook's log with this repo's history: 44 commits
+the reviewer saw in full, labelled for the nine questions in
+`bench/live-reviews.jsonl`. It holds at most two positives per question, so no fit was
+made. What it does show is how often the current thresholds raise a false alarm on real
+commits of this repo, with the model's raw answers from the log (question texts
+unchanged since):
+
+| Question | Threshold | False alarms | Positives caught |
+|---|---:|---:|---:|
+| `weakens_tests` | 0.50 | 11 of 44 | none in the set |
+| `hardcoded_secret` | 0.10 | 3 of 44 | none in the set |
+| `touches_auth` | 0.70 | 3 of 43 | 0 of 1 |
+| `adds_tests` (missing tests) | 0.70 | 3 of 43 | 1 of 1 |
+| `injection_risk` | 0.99 | 0 of 42 | 0 of 2 |
+
+Those reviews ran before `weakens_expected` existed, so the `weakens_tests` row is the
+rule without its second reading. The two `injection_risk` positives are literal ones
+(environment variables in a fetched URL and in an executed path), the `touches_auth`
+one an example Caddy configuration.
+
 ## Planned
 
 - A second labeller on the holdout sets, to know how far the labels themselves agree.

@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- `bench/live-reviews.jsonl`: 44 commits of this repo the live reviewer saw in full,
+  labelled for the nine questions by two independent agents with the bench
+  definitions (394 of 396 labels agreed; a third decided the other two). Too few
+  positives for a calibration fit; `docs/evaluation.md` gives the false alarms of the
+  current thresholds on them.
+
 ## 0.9.0 — 2026-09-29
 
 The effort router runs on Sonnet 5.5 too, and every review says which plugin version

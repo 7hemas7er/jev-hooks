@@ -401,6 +401,30 @@ node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \
   --out bench/results/YYYY-MM-DD-holdout-weakens --date YYYY-MM-DD
 ```
 
+## `live-reviews.jsonl`: commits the live reviewer saw, labelled for every question
+
+44 commits of this repo that the installed reviewer reviewed between 2026-09-27 and
+2026-09-29, each diff in full (commits whose review left files out are not here: the
+model did not see all of them). One row per commit, with the nine labels in the
+polarity of the sent question and no diff: the reviewer saw
+`git diff <DIFF_FLAGS> <commit>^ <commit>` (`DIFF_FLAGS` in `src/node/git.ts`), and the
+commit message was the title and description.
+
+```json
+{"id": "review-4caf96f", "commit": "4caf96f…", "title": "feat(action): …", "labels": {"hardcoded_secret": false, "…": false}, "note": "…"}
+```
+
+Two agents labelled every commit independently, with the definitions above and without
+seeing the reviewer's answers; they agreed on 394 of the 396 labels, and a third agent
+decided the two they did not (both `description_matches`). Every yes has a note naming
+the line that decides it. The labels are therefore the definitions applied literally,
+not a person's judgement.
+
+The set is small and nearly all negative: at most two positives per question, too few
+for a calibration fit (`docs/evaluation.md`). It serves to count false alarms on real
+commits and, in time, to measure a new wording on them; the model's answers are in the
+maintainer's hook log, not in the repo.
+
 ## `router-dev.jsonl`: prompts for the effort router
 
 The router's counterpart of `dev.jsonl`: 120 prompts as they reach Claude Code from the
