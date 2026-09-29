@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.7.0 — 2026-09-29
+
+The Action's hardening, run for real: a required check from a dedicated App, and a
+review of rizzo over the tailnet from GitHub's runner.
+
 ### Added
 
 - `examples/workflows/jev-review.yml` creates the check run with a dedicated GitHub App
