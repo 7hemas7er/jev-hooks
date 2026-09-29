@@ -1012,8 +1012,12 @@ not fire on its own repository and GitHub's push protection stays quiet.
   slow backend (a staged copy with `timeout_ms` raised to 8 s, the backend answering
   in 6 s) ended the wait at once: `prompt.submit` settled 30 ms after the cancel, the
   classification's request never completed, the composer got the prompt back, and the
-  next prompt was classified and routed as usual, with no rest period. Not verified
-  yet: a stored sensitive key reaching `options`.
+  next prompt was classified and routed as usual, with no rest period. A sensitive
+  option set in `/plugin` reaches the module too: with `router_api_key` saved as a
+  wrong value (kept out of `settings.json`, in Claude Code's secure storage) the next
+  prompt got `router: key rejected by the backend (HTTP 401)`, although the key file
+  held the right key. The dialog cannot empty a sensitive value once saved (an empty
+  field means "unchanged", on 2.1.284): to change `router_api_key`, type the new one.
 - **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
   is active. The cache guard notices a cleared cache only after the fact: two turns
   that each paid for the whole context again.

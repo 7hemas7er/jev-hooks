@@ -18,6 +18,13 @@ a release is a separate `chore(release): X.Y.Z` commit.
   without the wait the first request failed to resolve the name; with it, rizzo on the
   Spark reviewed a real pull request.
 
+### Verified
+
+- A sensitive option saved in `/plugin` reaches the effort router's module: a wrong
+  `router_api_key` gave the router a 401 while the key file held the right key. On
+  Claude Code 2.1.284 the dialog cannot empty a sensitive value once saved: overwrite
+  it instead.
+
 ## 0.6.0 — 2026-09-29
 
 `weakens_tests` asks twice before it escalates, measured on a holdout written for it.
