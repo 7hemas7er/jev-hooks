@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Verified
+
+- A pull request from a fork: the second phase finds it, rizzo reviews its diff, the
+  fork's added workflow is escalated, and a forged first phase leaves the merge
+  blocked by the app's required check.
+
 ## 0.7.0 — 2026-09-29
 
 The Action's hardening, run for real: a required check from a dedicated App, and a

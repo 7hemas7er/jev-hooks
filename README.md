@@ -64,7 +64,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
-| GitHub Action (`action.yml`) | built; run on real pull requests: rizzo over the tailnet, a required check from a dedicated App that a same-named job cannot imitate; not yet a fork from another account | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
+| GitHub Action (`action.yml`) | built; run on real pull requests, a fork's included: rizzo over the tailnet, a required check from a dedicated App that a same-named job cannot imitate | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
 
 ## How it works
 
@@ -440,8 +440,12 @@ the review reached rizzo on the Spark through an ephemeral `tag:ci` node, allowe
 tailnet policy to reach only the proxy's port: the 0.6.0 action reviewed a real pull
 request in 3.0 s (two requests, the Spark's calibration profile matched by fingerprint)
 and the app's check came back `success` with NITS. The first attempt, without the
-`ping` input, failed to resolve the Spark's name. Not run yet: a pull request from
-another account's fork.
+`ping` input, failed to resolve the Spark's name. From a fork in another owner's
+namespace (an organization), the second phase found the cross-repository pull request,
+rizzo reviewed its diff, and the detector `ci_workflow` escalated the fork's added
+workflow (`neutral`); after the fork forged the first phase, the app's check turned
+`failure` and the merge stayed blocked beside a succeeding job named `jev-review`.
+Not run: a first-time contributor whose workflows wait for approval.
 
 ## Configuration: open a JSON, never touch the code
 
