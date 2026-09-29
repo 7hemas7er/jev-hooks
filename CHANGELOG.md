@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.9.0 — 2026-09-29
+
+The effort router runs on Sonnet 5.5 too, and every review says which plugin version
+answered it.
+
 ### Changed
 
 - The effort router also runs on Sonnet 5.5 (`only_models` gains `sonnet-5-5`). Claude
