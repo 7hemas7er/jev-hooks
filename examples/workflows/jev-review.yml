@@ -7,7 +7,11 @@
 # Repository settings: variable JEV_URL (the backend's base URL), optionally JEV_MODEL;
 # secret JEV_API_KEY when the backend needs a key. For a backend on your tailnet, set
 # the variable JEV_TAILSCALE to true and the two TS_OAUTH_* secrets (an ephemeral node
-# tagged tag:ci, with an ACL that reaches only the backend's port).
+# tagged tag:ci, with an ACL that reaches only the backend's port). For a required check
+# a fork cannot imitate, set the variable JEV_APP_CLIENT_ID and the secret
+# JEV_APP_PRIVATE_KEY of a dedicated GitHub App (permission Checks: read and write, no
+# webhook, installed on this repository), and require "jev-review" from that app in
+# branch protection (README → GitHub Action).
 name: jev-review
 on:
   workflow_run:
@@ -42,16 +46,23 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+      # Only with a dedicated app: its token creates the check run, so a job named
+      # jev-review in a fork cannot stand in for it. Without it, the Actions token does.
+      - id: app
+        if: vars.JEV_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.JEV_APP_CLIENT_ID }}
+          private-key: ${{ secrets.JEV_APP_PRIVATE_KEY }}
+          permission-checks: write
       # A commit SHA, never a branch: this step holds the key. Replace it with the SHA of
       # the jev-hooks release you have read.
-      - uses: 7hemas7er/jev-hooks@8bbae2a7a898960f2be2c78f8762229b6d254d08 # 0.4.0 code
+      - uses: 7hemas7er/jev-hooks@0f30d9fdb22948a76462e342e9b3b115e2876141 # 0.6.0
         with:
           input-dir: ${{ runner.temp }}/jev-input
           url: ${{ vars.JEV_URL }}
           api-key: ${{ secrets.JEV_API_KEY }}
           model: ${{ vars.JEV_MODEL || 'jev-latest' }}
           github-token: ${{ github.token }}
-          # For a required check that a workflow in a fork cannot imitate, create the check
-          # run with a dedicated GitHub App and set that app as the check's expected source
-          # in branch protection (README → GitHub Action):
-          # checks-token: ${{ steps.app.outputs.token }}
+          # empty without the app step: the action then uses github-token
+          checks-token: ${{ steps.app.outputs.token }}

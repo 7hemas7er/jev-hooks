@@ -64,7 +64,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
-| GitHub Action (`action.yml`) | built; two-phase flow run on real pull requests, with a fake backend on the runner | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
+| GitHub Action (`action.yml`) | built; two-phase flow run on real pull requests with a fake backend, and a required check from a dedicated App that a same-named job cannot imitate | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
 
 ## How it works
 
@@ -430,8 +430,13 @@ artifact of another pull request or head sha"), on the real head commit. With a 
 backend started on the runner (`JEV_URL` on 127.0.0.1, `JEV_API_KEY` from a secret
 that the fake requires), the 0.5.0 action gave `success` with NITS to a pull request
 that left a trace call, and `neutral` with a `hardcoded_secret` escalation to one that
-added a token variable. Not run yet: a real backend reached over the tailnet, a pull
-request from a fork, and a dedicated GitHub App as the check's expected source.
+added a token variable. Then a dedicated GitHub App (Checks: read and write, no
+webhook) created the check run, required from that app in branch protection with
+admins included: a plain pull request got `jev-review` from the app and became
+mergeable, and a pull request that forged the first phase and added its own job named
+`jev-review`, which succeeded, stayed blocked, and a merge attempt was refused. Not run
+yet: a real backend reached over the tailnet, and a pull request from another account's
+fork.
 
 ## Configuration: open a JSON, never touch the code
 

@@ -78,7 +78,11 @@ the GitHub Actions app, and branch protection cannot tell them apart.
 
 **Stopped by:** creating the check run with a dedicated GitHub App (`checks-token`) and
 setting that app as the check's expected source. Without it, a required `jev-review`
-check can be imitated; the README says so.
+check can be imitated; the README says so. Checked on real pull requests (2026-09-29):
+with the app required, a pull request that added a job named `jev-review` which
+succeeded, while the app's own check failed, stayed blocked and could not be merged,
+admins included. `examples/workflows/jev-review.yml` creates the app's token only when
+`JEV_APP_CLIENT_ID` is set.
 
 ### A hostile local repository
 

@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- `examples/workflows/jev-review.yml` creates the check run with a dedicated GitHub App
+  when `JEV_APP_CLIENT_ID` and `JEV_APP_PRIVATE_KEY` are set
+  (`actions/create-github-app-token`, pinned), and pins the 0.6.0 release. Checked on
+  real pull requests: a required check from the app cannot be imitated by a job of the
+  same name.
+
 ## 0.6.0 — 2026-09-29
 
 `weakens_tests` asks twice before it escalates, measured on a holdout written for it.
