@@ -9,7 +9,7 @@ import {
   compare, ciConclusion, partialCoverage, decide, mergeReady, valuesFromVerdict, evaluateRule,
 } from '../../src/core/verdict.ts'
 import type { CoverageGaps } from '../../src/core/verdict.ts'
-import type { Calibration, Result, DetectorResult, Identity, Policy, ProfileSelection, CheckValue, EscalationItem } from '../../src/core/types.ts'
+import type { Calibration, Result, DetectorResult, Identity, Policy, ProfileSelection, CheckValue, EscalationItem, Rule } from '../../src/core/types.ts'
 import { generator } from '../helpers/strings.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -130,6 +130,22 @@ test('unevaluated rules: no value → the rule does not fire and appears among t
   assert.equal(proto.lane.name, 'MERGE')
 })
 
+test('evaluateRule: a list of unless conditions, any of which cancels the rule', () => {
+  const rule: Rule = {
+    check: 'weakens_tests', op: 'gte', value: 0.5, action: 'escalation',
+    unless: [{ check: 'docs_only', op: 'gte', value: 0.5 }, { check: 'debug_leftovers', op: 'lt', value: 0.1 }],
+  }
+  assert.equal(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 0, debug_leftovers: 0.5 }), S)?.fires, true)
+  assert.equal(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 1, debug_leftovers: 0.5 }), S)?.fires, false)
+  assert.equal(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 0, debug_leftovers: 0.05 }), S)?.fires, false)
+  // a condition without a value does not hold: the rule fires, and says why
+  assert.deepEqual(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 0 }), S),
+    { fires: true, value: 0.9, threshold: 0.5, source: 'policy', unlessWithoutValue: 'debug_leftovers' })
+  // another condition cancels it: no note about the missing one, since it changed nothing
+  assert.deepEqual(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 1 }), S),
+    { fires: false, value: 0.9, threshold: 0.5, source: 'policy' })
+})
+
 test('an unless on a missing value is false: the rule fires and the output notes it', () => {
   const r = decide(values({ adds_tests: 0.1 }), POLICY, S, NO_FLOOR, COMPLETE, {})
   assert.equal(r.lane.name, 'NITS')
@@ -229,7 +245,7 @@ function directions(): Map<string, 1 | -1> {
   for (const c of POLICY.lanes) {
     for (const r of c.rules) {
       mark(r.check, r.op === 'gte' || r.op === 'gt' ? 1 : -1)
-      if (r.unless) mark(r.unless.check, r.unless.op === 'gte' || r.unless.op === 'gt' ? -1 : 1)
+      for (const u of r.unless ?? []) mark(u.check, u.op === 'gte' || u.op === 'gt' ? -1 : 1)
     }
   }
   for (const id of conflicts) dir.delete(id)
@@ -241,7 +257,7 @@ test('monotonicity over 10,000 random combinations: floors, coverage and values 
   const dir = directions()
   const ids = [...dir.keys()]
   assert.ok(ids.length >= 9)
-  const conditions = [...new Set(POLICY.lanes.flatMap((c) => c.rules.flatMap((x) => (x.unless ? [x.unless.check] : []))))]
+  const conditions = [...new Set(POLICY.lanes.flatMap((c) => c.rules.flatMap((x) => (x.unless ?? []).map((u) => u.check))))]
   assert.ok(conditions.length >= 1)
   const thresholds = POLICY.lanes.flatMap((c) => c.rules.map((x) => x.value))
   const random = (): number => {

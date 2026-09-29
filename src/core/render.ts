@@ -697,9 +697,9 @@ export function renderExplanation(
   const wc = Math.max(...p.lanes.map((l) => [...l.name].length))
   for (const lane of p.lanes) {
     for (const r of lane.rules) {
-      const unless = r.unless ? ` unless ${r.unless.check} ${SYMBOL[r.unless.op]} ${formatNumber(r.unless.value, 2)}` : ''
+      const unless = r.unless ? ` unless ${r.unless.map((c) => `${c.check} ${SYMBOL[c.op]} ${formatNumber(c.value, 2)}`).join(' or ')}` : ''
       if (r.check !== id) {
-        if (r.unless?.check === id) {
+        if (r.unless?.some((c) => c.check === id)) {
           lines.push(`  ${pad(lane.name, wc)}  ${r.check} ${SYMBOL[r.op]} ${formatNumber(r.value, 2)}${unless}  (here as an unless condition)`)
           ruleCount++
         }

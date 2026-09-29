@@ -91,7 +91,8 @@ export function benchConfig(root: string = ROOT): BenchConfig {
   const json = (n: string): unknown => JSON.parse(readFileSync(join(root, 'config', `${n}.json`), 'utf8'))
   const checks = valueOrThrow(validateChecks(json('checks'), 'checks.json'))
   const policy = valueOrThrow(validatePolicy(json('policy'), checks, 'policy.json'))
-  const questions = checks.order.filter((id) => isModelProbability(checks.defs[id]))
+  // a second reading (bench_labels) shares another question's labels: nothing to label
+  const questions = checks.order.filter((id) => isModelProbability(checks.defs[id]) && checks.defs[id].bench_labels === undefined)
   return { checks, policy, questions }
 }
 

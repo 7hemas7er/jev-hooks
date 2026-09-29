@@ -40,11 +40,13 @@ const policy = (): Policy => valueOf(validatePolicy(POLICY, checks(), 'policy.js
 
 test('the four default JSON files are valid', () => {
   const c = checks()
-  assert.equal(c.order.length, 14)
+  assert.equal(c.order.length, 15)
   assert.deepEqual(c.order.filter((id) => c.defs[id].source === 'computed'), ['docs_only', 'merge_ready'])
   assert.deepEqual(c.order.filter((id) => c.defs[id].scope === 'chunk'), [
-    'hardcoded_secret', 'injection_risk', 'touches_auth', 'weakens_tests', 'breaks_api', 'data_migration', 'debug_leftovers',
+    'hardcoded_secret', 'injection_risk', 'touches_auth', 'weakens_tests', 'weakens_expected', 'breaks_api', 'data_migration', 'debug_leftovers',
   ])
+  // a second reading of weakens_tests: the bench labels it with that question's labels
+  assert.deepEqual(c.order.filter((id) => c.defs[id].bench_labels !== undefined).map((id) => [id, c.defs[id].bench_labels]), [['weakens_expected', 'weakens_tests']])
   assert.deepEqual(c.order.filter((id) => c.defs[id].invert), ['adds_tests', 'description_matches'])
   const p = policy()
   assert.deepEqual(p.lanes.map((l) => l.name), ['BLOCK', 'SECURITY REVIEW', 'NITS', 'MERGE'])
@@ -55,7 +57,7 @@ test('the four default JSON files are valid', () => {
   const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
   assert.deepEqual(k.profiles.map((x) => x.name), ['spark-bf16-2026-09', 'rizzo-provisional', 'jev', 'clm-provisional', 'unknown'])
   // the wordings measured on the bench: five choices with a value of 1 − p(none), none first
-  assert.deepEqual(c.order.filter((id) => c.defs[id].value), ['injection_risk', 'weakens_tests', 'adds_tests', 'breaks_api', 'data_migration'])
+  assert.deepEqual(c.order.filter((id) => c.defs[id].value), ['injection_risk', 'weakens_tests', 'weakens_expected', 'adds_tests', 'breaks_api', 'data_migration'])
   for (const id of c.order) {
     const v = c.defs[id].value
     if (v) assert.deepEqual([v, Object.keys(c.defs[id].criteria as object)[0]], [{ kind: 'one_minus', option: 'none' }, 'none'], id)
@@ -82,11 +84,14 @@ test('Spark profile: uncalibrated, policy.json thresholds, hashes of the measure
   const thresholds: Record<string, number> = {}
   for (const l of p.lanes) for (const r of l.rules) thresholds[r.check] = r.value
   assert.deepEqual(spark.thresholds, thresholds)
-  assert.deepEqual(Object.keys(spark.per_question ?? {}).sort(), Object.keys(thresholds).sort())
-  const variants = json('bench/variants.json')
+  // the questions measured on the bench: those the rules decide on, and those an unless asks
+  const asked = new Set(Object.keys(thresholds))
+  for (const l of p.lanes) for (const r of l.rules) for (const u of r.unless ?? []) if (c.defs[u.check].source === 'model') asked.add(u.check)
+  assert.deepEqual(Object.keys(spark.per_question ?? {}).sort(), [...asked].sort())
+  const variants = { ...json('bench/variants.json'), weakens_expected: json('bench/variants-weakens-2.json').weakens_tests }
   const measured: Record<string, string> = {
     injection_risk: 'c_scelta', weakens_tests: 'c_scelta', adds_tests: 'c_scelta', breaks_api: 'c_scelta', data_migration: 'c_scelta',
-    debug_leftovers: 'a_letterale', hardcoded_secret: 'attuale', touches_auth: 'attuale',
+    debug_leftovers: 'a_letterale', hardcoded_secret: 'attuale', touches_auth: 'attuale', weakens_expected: 'i_expected',
   }
   for (const [id, item] of Object.entries(spark.per_question ?? {})) {
     const sent = wireQuestion(c.defs[id])
@@ -165,6 +170,21 @@ test('static check: consecutive quantifiers rejected only if unbounded and over 
   }
 })
 
+test('checks.json: bench_labels names another probability of the file, one step only', () => {
+  const bad = (mod: (c: Record<string, any>) => void): string[] => {
+    const c = structuredClone(CHECKS) as Record<string, any>
+    mod(c)
+    const r = validateChecks(c, 'checks.json')
+    return r.ok ? [] : (r.error.problems ?? []).map((x) => `${x.pointer} ${x.message}`)
+  }
+  assert.deepEqual(bad(() => {}), [])
+  assert.match(bad((c) => { c.weakens_expected.bench_labels = 'weakens_expected' }).join(), /\/weakens_expected\/bench_labels bench_labels must name another check/)
+  assert.match(bad((c) => { c.weakens_expected.bench_labels = 'weakens_test' }).join(), /bench_labels must name another check/)
+  assert.match(bad((c) => { c.weakens_expected.bench_labels = 'blast_radius' }).join(), /bench_labels must name another check/)
+  assert.match(bad((c) => { c.weakens_tests.bench_labels = 'injection_risk' }).join(), /\/weakens_expected\/bench_labels .*without bench_labels of its own/)
+  assert.match(bad((c) => { c.blast_radius.bench_labels = 'weakens_tests' }).join(), /\/blast_radius\/bench_labels bench_labels only applies to/)
+})
+
 test('the user\'s original checks.json loads as it is', () => {
   const original = json('tests/data/checks-original.json')
   const c = valueOf(validateChecks(original, '.jev-hooks/checks.json'))
@@ -189,7 +209,11 @@ test('the original checks.json also works as a project file', () => {
   const r = valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: readText('tests/data/checks-original.json') } } })))
   assert.equal(r.sources.checks, '.jev-hooks/checks.json')
   assert.equal(r.checks.defs.hardcoded_secret.scope, 'global')
-  assert.deepEqual(r.warnings, [])
+  // it predates weakens_expected: that unless condition is dropped, on the safe side, with a note
+  assert.deepEqual(r.warnings, [
+    'config/policy.json /lanes/2/rules/2/unless/1/check: unless condition dropped: "weakens_expected" is not defined in .jev-hooks/checks.json, so the rule fires without it',
+  ])
+  assert.deepEqual(rule(r.policy, 'NITS', 'weakens_tests')[0].unless, [{ check: 'docs_only', op: 'gte', value: 0.5 }])
   // untrusted: its path regexes run outside the core
   assert.equal(r.checks.fromProject, true)
   assert.equal(valueOf(composeConfig(layers())).checks.fromProject, undefined)
@@ -343,12 +367,13 @@ const policyCases: [string, Mod, string, RegExp][] = [
   ['choice with a value over 1', (p) => { p.lanes[2].rules[1].value = 1.2 }, '/lanes/2/rules/1/value', /between 0 and 1/],
   ['score past the last level', (p) => { p.lanes[1].rules.push({ check: 'blast_radius', op: 'gte', value: 4 }) }, '/lanes/1/rules/0/value', /between 0 and 3/],
   ['unknown op', (p) => { p.lanes[2].rules[0].op = '>=' }, '/lanes/2/rules/0/op', /expected one of "gte", "gt", "lte", "lt"/],
-  ['unless with an unknown check', (p) => { p.lanes[2].rules[7].unless.check = 'only_docs' }, '/lanes/2/rules/7/unless/check', /unknown check/],
   ['escalation.hook from before v2', (p) => { p.escalation.hook = 'context_only' }, '/escalation/hook', /expected one of "context", "deny_then_allow", "deny_then_ask"/],
   ['unknown action', (p) => { p.lanes[2].rules[0].action = 'block' }, '/lanes/2/rules/0/action', /expected one of "lane", "escalation"/],
   ['escalation on a score', (p) => { p.lanes[2].rules.push({ check: 'blast_radius', op: 'gte', value: 2, action: 'escalation' }) }, '/lanes/2/rules/8/action', /"escalation" only applies to the nouls asked of the model and the choices with a "value"/],
   ['escalation on a computed check', (p) => { p.lanes[1].rules.push({ check: 'docs_only', op: 'gte', value: 0.5, action: 'escalation' }) }, '/lanes/1/rules/0/action', /"escalation" only applies to/],
   ['action inside an unless', (p) => { p.lanes[2].rules[7].unless.action = 'escalation' }, '/lanes/2/rules/7/unless/action', /unknown field/],
+  ['empty unless list', (p) => { p.lanes[2].rules[7].unless = [] }, '/lanes/2/rules/7/unless', /one condition or a list of 1 to 4/],
+  ['unless list over 4', (p) => { p.lanes[2].rules[7].unless = Array(5).fill({ check: 'docs_only', op: 'gte', value: 0.5 }) }, '/lanes/2/rules/7/unless', /a list of 1 to 4/],
   ['limits.hook.total_ms over 160,000', (p) => { p.limits.hook.total_ms = HOOK_CAP_MS + 1 }, '/limits/hook/total_ms', /at most 160000/],
   ['limits.skill.total_ms over 160,000', (p) => { p.limits.skill.total_ms = 170_000 }, '/limits/skill/total_ms', /hooks\.json timeout/],
   ['last lane with rules', (p) => { p.lanes[3].rules = [{ check: 'touches_auth', op: 'gte', value: 0.1 }] }, '/lanes/3/rules', /the last lane must have no rules/],
@@ -588,6 +613,42 @@ test('project: adding an unless to an existing rule loosens it and is ignored', 
   ] }] }) })))
   assert.deepEqual(rule(r.policy, 'NITS', 'injection_risk'), [{ check: 'injection_risk', op: 'gte', value: INJECTION_THRESHOLD, action: 'escalation' }])
   assert.ok(r.warnings.some((a) => a.includes('/lanes/0/rules/0: field ignored')))
+})
+
+test('policy.json: an unless on a check that is not defined is dropped with a note, never an error', () => {
+  const p = structuredClone(POLICY)
+  p.lanes[2].rules[7].unless = [{ check: 'only_docs', op: 'gte', value: 0.5 }, { check: 'docs_only', op: 'gte', value: 0.5 }]
+  const r = valueOf(validatePolicy(p, checks(), 'policy.json'))
+  assert.deepEqual(r.lanes[2].rules[7].unless, [{ check: 'docs_only', op: 'gte', value: 0.5 }])
+  assert.deepEqual(r.notes, ['policy.json /lanes/2/rules/7/unless/0/check: unless condition dropped: "only_docs" is not defined in checks.json, so the rule fires without it'])
+  // the only condition gone: the rule has no unless left
+  p.lanes[2].rules[7].unless = { check: 'only_docs', op: 'gte', value: 0.5 }
+  assert.equal(valueOf(validatePolicy(p, checks(), 'policy.json')).lanes[2].rules[7].unless, undefined)
+  // the check of the rule itself stays an error
+  p.lanes[2].rules[7].check = 'only_docs'
+  assert.equal(validatePolicy(p, checks(), 'policy.json').ok, false)
+})
+
+test('project: an unless list may drop conditions or reorder them, never add one', () => {
+  const base = { check: 'adds_tests', op: 'lte', value: 0.3 }
+  const docs = { check: 'docs_only', op: 'gte', value: 0.5 }
+  const user = structuredClone(POLICY)
+  user.lanes[2].rules[7].unless = [docs, { check: 'debug_leftovers', op: 'gte', value: 0.9 }]
+  const withProject = (unless: unknown) => valueOf(composeConfig(layers({
+    user: { policy: { path: '~/.config/jev-hooks/policy.json', text: JSON.stringify(user) } },
+    project: project({ lanes: [{ name: 'NITS', rules: [{ ...base, unless }] }] }),
+  })))
+  // the same two, in the other order: kept
+  const same = withProject([{ check: 'debug_leftovers', op: 'gte', value: 0.9 }, docs])
+  assert.deepEqual(same.warnings, [])
+  // one of them only: the rule fires in more cases, kept
+  const fewer = withProject(docs)
+  assert.deepEqual(rule(fewer.policy, 'NITS', 'adds_tests')[0].unless, [docs])
+  assert.deepEqual(fewer.warnings, [])
+  // a condition the base does not have: ignored, with a note
+  const more = withProject([docs, { check: 'touches_auth', op: 'gte', value: 0.1 }])
+  assert.ok(more.warnings.some((a) => a.includes('/lanes/0/rules/0: field ignored')), more.warnings.join(' | '))
+  assert.equal(rule(more.policy, 'NITS', 'adds_tests')[0].unless?.length, 2)
 })
 
 test('escalation.hook: the default is deny_then_allow; from the project only stricter (context < deny_then_allow < deny_then_ask)', () => {
@@ -891,9 +952,9 @@ test('project checks.json: ids unknown to the trusted layers become project_chec
   assert.equal(r.sources.checks, '.jev-hooks/checks.json')
   assert.equal(r.checks.fromProject, true)
   // the file's fifteenth check: the plugin's fourteen, then the repo's
-  assert.deepEqual(r.checks.added, ['project_check_15'])
-  assert.equal(r.checks.order[14], 'project_check_15')
-  assert.equal(r.checks.defs.project_check_15.instructions, 'x?')
+  assert.deepEqual(r.checks.added, ['project_check_16'])
+  assert.equal(r.checks.order[15], 'project_check_16')
+  assert.equal(r.checks.defs.project_check_16.instructions, 'x?')
   assert.equal(r.checks.order.includes('touches_auth'), true)
   // the project's label does not stay even in the effective configuration
   for (const id of r.checks.order) assert.equal(r.checks.defs[id].label, id)
@@ -920,19 +981,19 @@ test('project policy.json: rules on replaced checks are translated, new detector
     policy: { path: '.jev-hooks/policy.json', text: JSON.stringify(p) },
   } })))
   assert.deepEqual(r.warnings, [])
-  assert.deepEqual(rule(r.policy, 'BLOCK', 'project_check_15'), [
-    { check: 'project_check_15', op: 'gte', value: 0.9, unless: { check: 'project_check_15', op: 'lt', value: 0.1 } },
+  assert.deepEqual(rule(r.policy, 'BLOCK', 'project_check_16'), [
+    { check: 'project_check_16', op: 'gte', value: 0.9, unless: [{ check: 'project_check_16', op: 'lt', value: 0.1 }] },
   ])
   const names = r.policy.detectors.filter((d) => d.fromProject).map((d) => [d.name, d.check])
   // the position is the one in the file's list: the second is an existing detector
-  assert.deepEqual(names, [['project_detector_1', 'project_check_15'], ['project_detector_3', undefined]])
+  assert.deepEqual(names, [['project_detector_1', 'project_check_16'], ['project_detector_3', undefined]])
   assert.equal(r.policy.detectors.find((d) => d.name === 'stripe_live')?.floor, 'BLOCK')
   for (const x of HOSTILE_IDS) assert.ok(!JSON.stringify(r.policy.detectors.map((d) => d.name)).includes(x), x)
 })
 
 test('replaced names: a trusted id that already has that name is not overwritten', () => {
   const u = structuredClone(CHECKS)
-  u.project_check_15 = { type: 'noul', instructions: 'id from the user file' }
+  u.project_check_16 = { type: 'noul', instructions: 'id from the user file' }
   const user = { checks: { path: '~/.config/jev-hooks/checks.json', text: JSON.stringify(u) } }
   const withProject = (c: unknown): Checks => valueOf(composeConfig(layers({
     user, project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } },
@@ -941,14 +1002,14 @@ test('replaced names: a trusted id that already has that name is not overwritten
   const c = structuredClone(CHECKS)
   c[HOSTILE_IDS[0]] = { type: 'noul', instructions: 'from the project' }
   const r = withProject(c)
-  assert.deepEqual(r.added, ['project_check_15_2'])
-  assert.equal(r.defs.project_check_15_2.instructions, 'from the project')
+  assert.deepEqual(r.added, ['project_check_16_2'])
+  assert.equal(r.defs.project_check_16_2.instructions, 'from the project')
   // a project check with that id is known and stays as it is
   const d = structuredClone(c)
-  d.project_check_15 = { type: 'noul', instructions: 'from the project, known id' }
+  d.project_check_16 = { type: 'noul', instructions: 'from the project, known id' }
   const s = withProject(d)
-  assert.deepEqual(s.added, ['project_check_15_2'])
-  assert.equal(s.defs.project_check_15.instructions, 'from the project, known id')
+  assert.deepEqual(s.added, ['project_check_16_2'])
+  assert.equal(s.defs.project_check_16.instructions, 'from the project, known id')
 })
 
 test('warnings about a project file: valid ids chosen by the file are not quoted, trusted ones are', () => {

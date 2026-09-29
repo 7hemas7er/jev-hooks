@@ -5,6 +5,26 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `weakens_tests` escalates only when a second reading agrees: a new question,
+  `weakens_expected`, is asked on every chunk, and the rule's `unless` now holds it
+  next to `docs_only`. On a fresh holdout written blind the pair keeps 15 of 16
+  positives and cuts false alarms from 10 in 44 to 4, at the cost of one more question
+  per chunk.
+- In `policy.json`, `unless` takes one condition or a list of up to four, any of which
+  cancels the rule. A condition on a check your `checks.json` does not define is
+  dropped with a note instead of making the policy invalid, so a `checks.json` written
+  before this release keeps working. A project policy may drop a rule's conditions,
+  never add one.
+
+### Added
+
+- `bench_labels` in `checks.json`: a question that re-reads another one takes its
+  labels on the bench (`bench/verify.ts`, `scripts/measure-questions.ts`).
+- `bench/verify.ts --only <questions>`, for a set labelled for fewer questions, and
+  `bench/holdout-weakens.jsonl` with its one measurement.
+
 ## 0.5.0 — 2026-09-29
 
 A second backend measured and set aside, and the checks that were still only on paper

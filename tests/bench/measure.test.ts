@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   balancedAccuracy, auroc, composeRow, pluginConfig, InputError, parseDataset, readValue, parseVariants, logitMean, metrics,
-  measure, ROOT, PATHS_ONLY, statesOf, questionTable,
+  measure, ROOT, PATHS_ONLY, statesOf, questionTable, withSharedLabels,
 } from '../../scripts/measure-questions.ts'
 import type { Readout, MeasureOptions, RawRow } from '../../scripts/measure-questions.ts'
 import { isModelProbability } from '../../src/core/config.ts'
@@ -635,4 +635,19 @@ test('command line: node scripts/measure-questions.ts', async () => {
   } finally {
     await fake.close()
   }
+})
+
+test('withSharedLabels: a second reading takes the label of the question it reads again, unless the row has its own', () => {
+  const { checks } = pluginConfig()
+  const rows = parseDataset([
+    JSON.stringify({ id: 'a', diff: 'x', labels: { weakens_tests: true } }),
+    JSON.stringify({ id: 'b', diff: 'x', labels: { weakens_tests: true, weakens_expected: false } }),
+    JSON.stringify({ id: 'c', diff: 'x', labels: { hardcoded_secret: true } }),
+  ].join('\n'), 'd.jsonl')
+  const [a, b, c] = withSharedLabels(rows, checks)
+  assert.equal(a.labels.weakens_expected, true)
+  assert.equal(b.labels.weakens_expected, false)
+  assert.equal(c.labels.weakens_expected, undefined)
+  // the rows it was given stay as they were
+  assert.equal(rows[0].labels.weakens_expected, undefined)
 })

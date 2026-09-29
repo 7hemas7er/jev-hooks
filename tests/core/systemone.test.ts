@@ -131,8 +131,8 @@ test('questionHash: a score\'s levels stay in order, a noul\'s criteria do not',
 
 // ─── validateBody ──────────────────────────────────────────────────────────────
 
-test('validateBody: the body with the 12 default questions is valid', () => {
-  assert.equal(Object.keys(QUESTIONS).length, 12)
+test('validateBody: the body with the 13 default questions is valid', () => {
+  assert.equal(Object.keys(QUESTIONS).length, 13)
   assert.deepEqual(validateBody(body()), [])
 })
 
@@ -329,12 +329,12 @@ test('parseResponse: the 12 valid answers, usage and x_rizzo kept', () => {
   assert.deepEqual(response.x_rizzo, { fingerprint: 'fp', probability_status: ['uncalibrated_conditional_option_scores'], timing: { queue_seconds: 0.1 } })
 })
 
-test('parseResponse: one malformed out of twelve → eleven valid', () => {
+test('parseResponse: one malformed out of thirteen → twelve valid', () => {
   const v = JSON.parse(validAnswer(QUESTIONS))
   v.answers.touches_auth = { type: 'noul', noul: 'high' }
   v.answers.unexpected = { type: 'noul', noul: 0.5 }
   const { response, discarded } = ok(parseResponse(JSON.stringify(v), QUESTIONS))
-  assert.equal(Object.keys(response.answers).length, 11)
+  assert.equal(Object.keys(response.answers).length, 12)
   assert.deepEqual(discarded.map((s) => s.id), ['touches_auth'])
   assert.match(discarded[0].reason, /invalid noul/)
   assert.equal('unexpected' in response.answers, false)
@@ -414,7 +414,7 @@ test('parseResponse: a response unreadable as a whole fails the request', () => 
     ['{"model":"m"}', /without answers/],
     ['{"model":"m","answers":[]}', /without answers/],
     [validAnswer(QUESTIONS).replace('"model":"rizzo-spark-x2.5-4b-bf16",', ''), /without model/],
-    ['{"model":"m","answers":{}}', /no valid answer among the 12 expected/],
+    ['{"model":"m","answers":{}}', /no valid answer among the 13 expected/],
   ]
   for (const [text, re] of cases) {
     const e = ko(parseResponse(text, QUESTIONS))
@@ -596,7 +596,7 @@ test('ask: a response with one malformed question → ok with the discarded ones
   const c = script([{ kind: 'response', status: 200, text: JSON.stringify(v), ms: 10 }])
   const r = ok(await ask(c.transport, c.clock, BACKEND, body(), NETWORK, FAR))
   assert.deepEqual(r.discarded.map((s) => s.id), ['primary_concern'])
-  assert.equal(Object.keys(r.response.answers).length, 11)
+  assert.equal(Object.keys(r.response.answers).length, 12)
 })
 
 // ─── Against the fake server, over HTTP ───────────────────────────────────────
@@ -621,7 +621,7 @@ async function raw(b: Backend, body: unknown, key = b.key): Promise<{ status: nu
   return { status: r.status, text: await r.text() }
 }
 
-test('fake rizzo: the 12 default questions, fingerprint and family', async () => {
+test('fake rizzo: the 13 default questions, fingerprint and family', async () => {
   await withFake({}, async (fake, b) => {
     const r = ok(await send(b, body()))
     const a = r.response.answers

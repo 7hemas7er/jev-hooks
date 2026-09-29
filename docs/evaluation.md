@@ -71,6 +71,11 @@ hundredths between two texts are noise.
 - **`weakens_tests`** in two further rounds on dev and `live.jsonl`
   (`2026-09-28-weakens*`): a stricter wording won on dev and live but lost two
   positives on the holdout, so the current wording stays, with its threshold at 0.50.
+  A third round (2026-09-29) combined the two: escalate only when both wordings see a
+  weakening. Chosen on the measurements already taken, it was then checked once on a
+  fresh holdout written blind (`2026-09-29-holdout-weakens`): 15 of 16 positives, as
+  before, and 4 false alarms in 44 instead of 10. The second wording is
+  `weakens_expected` in `checks.json`, asked as an `unless` condition of the rule.
 - **The effort router** on its dev and holdout sets (`2026-09-28-router-*`): the
   questions' accuracy and AUROC, the effort each configuration would pick, and a
   frontier between under-routed turns and effort saved. `config/router.json` sits at
@@ -107,7 +112,5 @@ bench does not have in quantity:
 ## Planned
 
 - A second labeller on the holdout sets, to know how far the labels themselves agree.
-- A new holdout for a third round on `weakens_tests`, which still fires on commits that
-  only add code or tests.
 - Measuring TypeSafe's Jev on the public and synthetic rows, to check its claim of
   calibrated probabilities on diffs.

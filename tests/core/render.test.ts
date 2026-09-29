@@ -90,6 +90,7 @@ unreviewable: static/app.min.js
   injection_risk       Injection risk                          not evaluated
   touches_auth         Touches authentication and permissions  ████████████████░░░░  0.79 (0.98)
   weakens_tests        Weakens tests                           not evaluated
+  weakens_expected     Weakens tests, second reading           not evaluated
   adds_tests           Tests fit the change                    ████████████████░░░░  0.79 (0.98)
   breaks_api           Breaks a public API                     not evaluated
   data_migration       Data migration                          not evaluated

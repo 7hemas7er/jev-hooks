@@ -24,7 +24,7 @@ export const RE_ID = /^[a-z][a-z0-9_]{0,63}$/
 // file and of the plugin), which the caller passes to reader(), and the field names
 // the validator itself asks for or allows, which onlyFields and requiredField record
 // while they read. A word chosen by the file never gets in: a placeholder takes its place.
-export interface Reader { file: string; problems: Problem[]; untrusted?: boolean; words?: Set<string> }
+export interface Reader { file: string; problems: Problem[]; untrusted?: boolean; words?: Set<string>; notes?: string[] }
 
 export function reader(file: string, untrusted: boolean = false, vocabulary: Iterable<string> = []): Reader {
   return untrusted ? { file, problems: [], untrusted: true, words: new Set(vocabulary) } : { file, problems: [] }
@@ -61,6 +61,12 @@ export function quote(s: string, words: ReadonlySet<string> | null): string {
 // quote for the file being read.
 export function quoteFor(l: Reader, s: string): string {
   return quote(s, l.untrusted ? l.words ?? NO_WORDS : null)
+}
+
+// Not a problem: something the reader set aside on the safe side, which the user
+// should still hear about (it ends up among the warnings).
+export function addNote(l: Reader, pointer: string, message: string): void {
+  (l.notes ??= []).push(`${l.file} ${l.untrusted ? safePointer(pointer, l.words) : pointer}: ${message}`)
 }
 
 export function addProblem(l: Reader, pointer: string, message: string, file: string = l.file): void {

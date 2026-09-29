@@ -6,14 +6,14 @@
 import { canonical } from './canonical.ts'
 import {
   addKnownWords, readBoolean, fieldsOf, quote, quoteFor, isJson, isObject, readerResult, childPointer, formatProblem, parseJson, reader, readList, readListOf,
-  NO_WORDS, readNumber, readObject, safePointer, RE_ID, requiredField, addProblem, onlyFields, readString, readOneOf,
+  NO_WORDS, readNumber, readObject, safePointer, RE_ID, requiredField, addProblem, addNote, onlyFields, readString, readOneOf,
 } from './json.ts'
 import type { Reader, PlainObject, NumberConstraints } from './json.ts'
 import { LIMITS, HOOK_ESCALATION_MODES, EFFORT_SCALE, PROMPT_ORIGIN_KINDS } from './types.ts'
 import type {
   Calibration, CheckDef, Checks, CiConclusion, RouterCondition, ComposedConfig, Lane, WireQuestion, Effort, Result,
   ConfigFile, Json, ConfigLayers, Op, Origin, EffortStep, Policy, Problem, Profile, Rule, Detector,
-  RouterConfig, QuestionType, CalibrationEntry, CacheGuard,
+  RouterConfig, QuestionType, CalibrationEntry, CacheGuard, Condition,
 } from './types.ts'
 
 export type {
@@ -571,7 +571,7 @@ export function questionProblems(v: unknown, file: string, pointer: string): Pro
 
 const CHECK_FIELDS = [
   'label', 'type', 'instructions', 'criteria', 'source', 'scope', 'critical', 'higher_is_better', 'invert',
-  'escalation_patterns', 'requires', 'compute', 'value',
+  'escalation_patterns', 'requires', 'compute', 'value', 'bench_labels',
 ] as const
 
 // A check whose value is a model probability: a noul, or a choice with a value
@@ -629,6 +629,14 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
   const invert = optional(o, 'invert', false, (x) => readBoolean(l, x, f('invert')))
   const patterns = optional(o, 'escalation_patterns', [] as RegExp[], (x) => readRegexList(l, x, f('escalation_patterns'), 'i'))
   const requires = optional<CheckDef['requires']>(o, 'requires', [], (x) => readListOf(l, x, f('requires'), (r, pr) => readOneOf(l, r, pr, ['description'] as const)))
+  let benchLabels: string | undefined
+  if (o.bench_labels !== undefined) {
+    benchLabels = readString(l, o.bench_labels, f('bench_labels'), { nonEmpty: true })
+    if (benchLabels !== undefined && !RE_ID.test(benchLabels)) {
+      addProblem(l, f('bench_labels'), MSG_ID)
+      benchLabels = undefined
+    }
+  }
 
   let question: { instructions: Json; criteria?: Json } | undefined
   let compute: CheckDef['compute']
@@ -683,6 +691,7 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
   }
   if (compute) def.compute = compute
   if (value) def.value = value
+  if (benchLabels !== undefined) def.bench_labels = benchLabels
   return def
 }
 
@@ -707,6 +716,18 @@ export function validateChecks(json: unknown, file: string, o: { fromProject?: b
         order.push(id)
       }
     }
+    // bench_labels: a second reading of another question shares its labels on the
+    // bench, so both must be probabilities, and the chain stops at one step
+    for (const id of order) {
+      const b = items[id].bench_labels
+      if (b === undefined) continue
+      const target = Object.hasOwn(items, b) ? items[b] : undefined
+      const p = childPointer(childPointer('', id), 'bench_labels')
+      if (!isModelProbability(items[id])) addProblem(l, p, `bench_labels only applies to ${MSG_PROBABILITY}`)
+      else if (b === id || !target || !isModelProbability(target) || target.bench_labels !== undefined) {
+        addProblem(l, p, `bench_labels must name another check of this file that is one of ${MSG_PROBABILITY}, without bench_labels of its own`)
+      }
+    }
     if (fieldsOf(root).length === 0) addProblem(l, '', 'no check defined')
     const toModel = order.filter((id) => items[id].source === 'model').length
     if (toModel > LIMITS.maxQuestions) addProblem(l, '', `${toModel} questions for the model: at most ${LIMITS.maxQuestions} per request`)
@@ -722,6 +743,7 @@ const POLICY_FIELDS = [
 ] as const
 const LANE_FIELDS = ['name', 'exit_code', 'color', 'hook', 'ci', 'rules'] as const
 const RULE_FIELDS = ['check', 'op', 'value', 'unless', 'action'] as const
+const MAX_UNLESS = 4
 // "lane" is the default (the rule only decides the lane) and can be written for
 // clarity; "escalation" also sends the question to Claude.
 const ACTIONS = ['lane', 'escalation'] as const
@@ -757,7 +779,7 @@ function direction(op: Op): 'up' | 'down' {
 
 // Reads check/op/value of a rule or of an unless. The value is checked on the check's
 // scale: [0, 1] for nouls and choices with a value, [0, levels − 1] for scores.
-function readCondition(l: Reader, o: PlainObject, p: string, checks: Checks): { check: string; op: Op; value: number } | undefined {
+function readCondition(l: Reader, o: PlainObject, p: string, checks: Checks): Condition | undefined {
   const f = (k: string): string => childPointer(p, k)
   const check = readString(l, requiredField(l, o, p, 'check'), f('check'), { nonEmpty: true })
   const op = readOneOf(l, requiredField(l, o, p, 'op'), f('op'), OPS)
@@ -787,14 +809,33 @@ function readRule(l: Reader, v: unknown, p: string, checks: Checks): Rule | unde
   if (!o) return undefined
   onlyFields(l, o, p, RULE_FIELDS)
   const base = readCondition(l, o, p, checks)
+  // one condition, or a list of them: the rule does not fire when any holds
   let unless: Rule['unless']
   if (o.unless !== undefined) {
-    const u = readObject(l, o.unless, childPointer(p, 'unless'))
-    if (u) {
-      onlyFields(l, u, childPointer(p, 'unless'), ['check', 'op', 'value'])
-      unless = readCondition(l, u, childPointer(p, 'unless'), checks)
-      if (!unless) return undefined
-    } else return undefined
+    const up = childPointer(p, 'unless')
+    const list = Array.isArray(o.unless) ? o.unless : [o.unless]
+    if (list.length < 1 || list.length > MAX_UNLESS) {
+      addProblem(l, up, `expected one condition or a list of 1 to ${MAX_UNLESS}`)
+      return undefined
+    }
+    unless = []
+    for (const [i, item] of list.entries()) {
+      const ip = Array.isArray(o.unless) ? childPointer(up, String(i)) : up
+      const u = readObject(l, item, ip)
+      if (!u) return undefined
+      onlyFields(l, u, ip, ['check', 'op', 'value'])
+      // A condition on a check the active checks.json does not define is dropped, not
+      // an error: a checks.json written before the plugin added that check keeps
+      // working, and one condition fewer can only make the rule fire more often.
+      if (typeof u.check === 'string' && u.check !== '' && !Object.hasOwn(checks.defs, u.check)) {
+        addNote(l, childPointer(ip, 'check'), `unless condition dropped: ${quoteFor(l, u.check)} is not defined in ${checks.file}, so the rule fires without it`)
+        continue
+      }
+      const c = readCondition(l, u, ip, checks)
+      if (!c) return undefined
+      unless.push(c)
+    }
+    if (unless.length === 0) unless = undefined
   }
   const action = o.action === undefined ? 'lane' : readOneOf(l, o.action, childPointer(p, 'action'), ACTIONS)
   if (action === undefined) return undefined
@@ -1081,7 +1122,8 @@ function readResult<T>(l: Reader, value: T | undefined, what: string): Result<T>
 
 export function validatePolicy(json: unknown, checks: Checks, file: string): Result<Policy> {
   const l = reader(file)
-  return readResult(l, readPolicy(l, json, checks), 'policy.json')
+  const r = readResult(l, readPolicy(l, json, checks), 'policy.json')
+  return r.ok && l.notes?.length ? { ok: true, value: { ...r.value, notes: l.notes } } : r
 }
 
 // ═══ calibration.json ═══
@@ -1591,6 +1633,7 @@ function translateReferences(json: unknown, names: ReadonlyMap<string, string>):
     const out: PlainObject = { ...v }
     if (typeof v.check === 'string' && names.has(v.check)) out.check = names.get(v.check)
     if (isObject(v.unless)) out.unless = translate(v.unless)
+    else if (Array.isArray(v.unless)) out.unless = v.unless.map(translate)
     return out
   }
   const out: PlainObject = { ...json }
@@ -1616,8 +1659,11 @@ function atLeastAsStrict(fresh: Rule, old: Rule): boolean {
   const valueOk = direction(fresh.op) === 'up'
     ? fresh.value < old.value || (fresh.value === old.value && (strict || !oldStrict))
     : fresh.value > old.value || (fresh.value === old.value && (strict || !oldStrict))
-  // a new (or different) unless opens a case in which the rule no longer fires
-  const unlessOk = fresh.unless === undefined || canonical(fresh.unless) === canonical(old.unless ?? null)
+  // a new (or different) unless condition opens a case in which the rule no longer
+  // fires; dropping one of the base's conditions only makes the rule fire more often
+  const key = (c: Condition): string => canonical({ check: c.check, op: c.op, value: c.value })
+  const base = new Set((old.unless ?? []).map(key))
+  const unlessOk = (fresh.unless ?? []).every((c) => base.has(key(c)))
   // removing the escalation would mean a question that no longer reaches Claude
   const actionOk = old.action === undefined || fresh.action === old.action
   return valueOk && unlessOk && actionOk
@@ -1889,7 +1935,7 @@ export function overlayPolicy(
   }
   return {
     policy: { ...base, lanes, band, limits, network, detectors, hook, partial_coverage: partial, ci, escalation },
-    notes,
+    notes: [...(l.notes ?? []), ...notes],
     valid: true,
   }
 }
@@ -2000,6 +2046,7 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
   // the plugin pair has already been validated above: this is never reached without a selection
   if (!selection) return { ok: false, error: { kind: 'internal', message: 'no valid configuration' } }
 
+  for (const n of selection.policy.notes ?? []) warn(n)
   let checks = selection.checks.value
   let policy = selection.policy
   let checksSource = selection.checks.path
@@ -2017,6 +2064,7 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
       const replaced = replaceNames(r.value, vocab)
       const withProject = validatePolicy(selection.policyJson.value, replaced.checks, policySource)
       if (withProject.ok) {
+        for (const n of withProject.value.notes ?? []) warn(n)
         checks = replaced.checks
         names = replaced.names
         policy = withProject.value

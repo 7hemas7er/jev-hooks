@@ -148,6 +148,10 @@ export interface CheckDef {
   // itself is kept apart (primary_concern). "Model probability" = a noul, or a choice
   // with a value (isModelProbability in config.ts).
   value?: DerivedValue
+  // A second reading of another question, with the same definition: the bench labels
+  // it with that question's labels (bench/verify.ts, scripts/measure-questions.ts)
+  // instead of asking for labels of its own. Not sent to the model.
+  bench_labels?: string
 }
 
 // order = order of the keys in the file, which is also the printing order.
@@ -176,11 +180,15 @@ export interface Checks {
 // chosen for few false alarms). Absent = the rule only decides the lane.
 export type RuleAction = 'escalation'
 
+export interface Condition { check: string; op: Op; value: number }
+
+// unless: the rule does not fire when any of these conditions holds. policy.json may
+// write one object or a list; the reader always gives a list of at least one.
 export interface Rule {
   check: string
   op: Op
   value: number
-  unless?: { check: string; op: Op; value: number }
+  unless?: Condition[]
   action?: RuleAction
 }
 
@@ -224,6 +232,7 @@ export type HookEscalationMode = typeof HOOK_ESCALATION_MODES[number]
 export type CiConclusion = 'failure' | 'neutral' | 'success'
 
 export interface Policy {
+  notes?: string[]                          // what the reader set aside, for the warnings (an unless on a check that is not defined)
   lanes: Lane[]
   band: { delta_logit: number }           // band around the threshold of every rule, in logit
   escalation: { hook: HookEscalationMode; ci: CiConclusion; max_files: number; ttl_min: number }

@@ -679,6 +679,21 @@ function readText(file: string): string {
   }
 }
 
+// A question with bench_labels in checks.json is a second reading of another one: a
+// row without its own label for it takes that question's label.
+export function withSharedLabels(rows: readonly DatasetRow[], checks: Checks): DatasetRow[] {
+  const shared = checks.order.flatMap((id) => {
+    const b = checks.defs[id].bench_labels
+    return b === undefined ? [] : [[id, b] as const]
+  })
+  if (shared.length === 0) return [...rows]
+  return rows.map((r) => {
+    const labels = { ...r.labels }
+    for (const [id, b] of shared) if (labels[id] === undefined && labels[b] !== undefined) labels[id] = labels[b]
+    return { ...r, labels }
+  })
+}
+
 export async function measure(o: MeasureOptions): Promise<MeasureResult> {
   const log = o.log ?? ((s: string) => process.stderr.write(`${s}\n`))
   const clock = o.clock ?? nodeClock
@@ -688,7 +703,7 @@ export async function measure(o: MeasureOptions): Promise<MeasureResult> {
 
   const datasetText = readText(o.dataset)
   const variantsText = readText(o.variants)
-  const templates = parseDataset(datasetText, o.dataset)
+  const templates = withSharedLabels(parseDataset(datasetText, o.dataset), config.checks)
   const questions = parseVariants(variantsText, o.variants, config.checks)
   const rows = templates.map((r) => composeRow(r, o.seed))
   const states = new Map<string, States>()

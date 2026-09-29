@@ -168,7 +168,7 @@ export interface Simulation {
 const SYMBOL = { gte: '≥', gt: '>', lte: '≤', lt: '<' } as const
 
 function ruleText(lane: string, r: Rule): string {
-  const unless = r.unless ? ` unless ${r.unless.check} ${SYMBOL[r.unless.op]} ${formatNumber(r.unless.value, 2)}` : ''
+  const unless = r.unless ? ` unless ${r.unless.map((c) => `${c.check} ${SYMBOL[c.op]} ${formatNumber(c.value, 2)}`).join(' or ')}` : ''
   return `${lane} ${r.check} ${SYMBOL[r.op]} ${formatNumber(r.value, 2)}${unless}${r.action === 'escalation' ? ' → escalation' : ''}`
 }
 

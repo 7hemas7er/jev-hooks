@@ -390,7 +390,10 @@ Measured once on 2026-09-29 (`results/2026-09-29-holdout-weakens`, rizzo on the 
 the variants of `variants-weakens-2.json`). The two-question rule holds on rows no one
 had looked at: it catches the same positives as the current text, 15 of 16, with 4
 false alarms in 44 instead of 10. `i_expected` alone has the best AUROC (0.977) but
-raises 7. The rule is not in `policy.json` yet: it costs one more question per chunk.
+raises 7. The rule is in `policy.json` since then: `weakens_expected` in `checks.json`
+is the `i_expected` text, asked as an `unless` condition of the `weakens_tests` rule,
+and its `bench_labels` makes the bench tools label it with `weakens_tests`' labels, so
+no dataset had to change.
 
 ```bash
 node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \

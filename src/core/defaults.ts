@@ -191,6 +191,9 @@ export const DEFAULT_CALIBRATION = {
         "weakens_tests": {
           "sha256": "1feb3ec470b86f0ec13998002f90ba4736dae11ba8b7b9d01e63a7f6bfb0af12"
         },
+        "weakens_expected": {
+          "sha256": "24071ad11d105afcf1310ee0f1e0f2421cf78d54a2d0631bf2dc0a2cb93e528a"
+        },
         "adds_tests": {
           "sha256": "e637c7a92d249a84aa22fdc41f70e0039e4ccd7af7e658b5c54e6392389f4f63"
         },

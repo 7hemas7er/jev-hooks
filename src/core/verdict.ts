@@ -88,10 +88,16 @@ export function evaluateRule(
   if (!out.fires || !r.unless) return out
   // The profile's threshold replaces the value of the rules ON that check, not of the
   // conditions that cancel a rule: an unless that is easier to satisfy would lower the
-  // verdict.
-  const u = numericValue(v, r.unless.check)
-  if (u === undefined) out.unlessWithoutValue = r.unless.check
-  else if (compare(u, r.unless.op, r.unless.value)) out.fires = false
+  // verdict. Any condition that holds cancels the rule; one without a value does not
+  // hold, so a missing answer can only leave the rule firing.
+  let missing: string | undefined
+  for (const c of r.unless) {
+    const u = numericValue(v, c.check)
+    if (u === undefined) missing ??= c.check
+    else if (compare(u, c.op, c.value)) out.fires = false
+  }
+  // the note says the rule fired because a condition had no value: only when it did
+  if (out.fires && missing !== undefined) out.unlessWithoutValue = missing
   return out
 }
 

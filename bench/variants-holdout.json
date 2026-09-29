@@ -4,6 +4,7 @@
   "injection_risk": { "variants": { "attuale": { "from_checks": true } } },
   "touches_auth": { "variants": { "attuale": { "from_checks": true } } },
   "weakens_tests": { "variants": { "attuale": { "from_checks": true } } },
+  "weakens_expected": { "variants": { "attuale": { "from_checks": true } } },
   "adds_tests": { "variants": { "attuale": { "from_checks": true } } },
   "breaks_api": { "variants": { "attuale": { "from_checks": true } } },
   "data_migration": { "variants": { "attuale": { "from_checks": true } } },
