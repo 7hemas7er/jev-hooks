@@ -24,6 +24,7 @@ import type { FakeServer } from '../helpers/fake-systemone.ts'
 import { createRepo } from '../helpers/git-repo.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const VERSION = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
 const BIN = join(ROOT, 'bin', 'jev-review.mjs')
 
 let base = ''
@@ -292,6 +293,7 @@ test('explain: the profile of the last review recorded with JEV_HOOKS_LOG, and t
   assert.equal(e.code, 1)
   const line = JSON.parse(readFileSync(log, 'utf8').trim().split('\n').pop() as string)
   assert.equal(line.origin, 'cli')
+  assert.equal(line.plugin_version, VERSION)
   assert.equal(line.lane, 'NITS')
   assert.deepEqual(line.escalation, ['hardcoded_secret'])
   assert.equal(line.backend.profile, 'rizzo-provisional')
@@ -332,6 +334,9 @@ test('explain: unknown check or profile → exit 4 with the list', async () => {
 test('status: GET /v1/models plus a real decision', async () => {
   const e = await jev(['status'])
   assert.equal(e.code, 0, e.err)
+  assert.ok(e.out.startsWith(`plugin: jev-hooks ${VERSION}\nbackend: `), e.out)
+  const json = await jev(['status', '--json'])
+  assert.equal(JSON.parse(json.out).pluginVersion, VERSION)
   // the names the backend gives itself as a hash: Claude reads the output too
   assert.match(e.out, /model: requested jev-latest, served sha256:[0-9a-f]{12} · family rizzo/)
   assert.match(e.out, /models: rizzo-latest, sha256:[0-9a-f]{12}/)

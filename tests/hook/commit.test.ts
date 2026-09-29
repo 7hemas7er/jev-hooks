@@ -21,6 +21,7 @@ import type { TestRepo } from '../helpers/git-repo.ts'
 import { awsKey, stripeLiveKey, injectionPhrase, generator, highEntropyValue } from '../helpers/fake-secrets.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const VERSION = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
 const MAIN = join(ROOT, 'src', 'hook', 'main.ts')
 
 // The fake userConfig key: it must never appear, not in the output, not in the logs,
@@ -182,6 +183,8 @@ test('BLOCK from a model rule in the user file → deny with a verifiable reason
     const line = logLines(pr).find((x) => x.outcome === 'ok')
     assert.equal(line?.lane, 'BLOCK')
     assert.equal(typeof line?.review_id, 'string')
+    // the plugin that ran: a session keeps the version it started with
+    assert.equal(line?.plugin_version, VERSION)
   } finally {
     close(pr)
   }

@@ -68,7 +68,7 @@ script or an alias. The [GitHub Action](action.md#github-action) is where a requ
 /jev-hooks:jev-review                   staged changes, else uncommitted ones, else the branch against main
 /jev-hooks:jev-review --staged          or --working, a git reference (origin/main, HEAD~3),
                                         or a .diff or .patch file inside the repo
-/jev-hooks:jev-status                   the backend, the model, one real decision, the profile
+/jev-hooks:jev-status                   the plugin version, the backend, the model, one real decision, the profile
 ```
 
 Claude's sandbox cannot reach your LAN and does not hold the key, so neither skill runs
@@ -83,3 +83,8 @@ uses the same configuration as the commit hook, including the HEAD version of
 `.jev-hooks/` rules you have modified and not committed, and it is logged with origin
 `skill`. Neither skill ever blocks: an error (backend not configured, not a git repo)
 comes back as data for Claude to explain.
+
+A running Claude Code keeps the plugin version it loaded until `/reload-plugins` or a
+restart, also after `/plugin update` and `/clear`: the
+review log records it in each line (`plugin_version`), and `/jev-status` and
+`jev-review status` show it first.

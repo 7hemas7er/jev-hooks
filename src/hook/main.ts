@@ -25,7 +25,7 @@
 // even without a backend. Two guarantees: stdout contains only the decision's
 // JSON; an exception ends up on stderr and in the log, with exit 0, without a decision.
 import { randomInt, randomUUID } from 'node:crypto'
-import { readFileSync, realpathSync, statSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,7 +42,7 @@ import {
   prunePending, recordFingerprint, logLine, writeCache, writePending, markEscalationDenied, sha256, removePending,
 } from '../node/data.ts'
 import { backendFrom, runReview, backendSources } from '../node/run.ts'
-import { loadConfig, loadMaskMap, describeModifiedRules, readKeyFile, displayPath } from '../node/file-config.ts'
+import { loadConfig, loadMaskMap, describeModifiedRules, readKeyFile, displayPath, pluginVersion } from '../node/file-config.ts'
 import type { LoadedConfig } from '../node/file-config.ts'
 import { git, readSource, repoRoot } from '../node/git.ts'
 import { nodeClock, nodeTransport } from '../node/transport.ts'
@@ -120,16 +120,6 @@ function isFailure(b: Backend | Failure): b is Failure {
 export function resolvePluginRoot(env: NodeJS.ProcessEnv): string {
   const r = env.CLAUDE_PLUGIN_ROOT
   return r !== undefined && r !== '' ? r : fileURLToPath(new URL('../../', import.meta.url))
-}
-
-// The plugin version enters the cache key: an update invalidates it.
-function pluginVersion(root: string): string {
-  try {
-    const v = (JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as { version?: unknown }).version
-    return typeof v === 'string' ? v : '?'
-  } catch {
-    return '?'
-  }
 }
 
 // The commit directory: `git -C`, a leading `cd`, or the input's cwd. ~ means the
@@ -410,7 +400,9 @@ async function examine(intent: CommitIntent, a: CommitRun, maskMap: readonly Mas
   const reviewId = randomUUID()
   const root = repoRoot(dir, a.start + 10_000, env) ?? dir
   const line: Record<string, unknown> = {
-    ...logLine(result, { origin: 'hook', session: a.session, repo: basename(root), ...(identity ? { identity } : {}) }),
+    ...logLine(result, {
+      origin: 'hook', session: a.session, repo: basename(root), version: pluginVersion(a.ctx.pluginRoot), ...(identity ? { identity } : {}),
+    }),
     review_id: reviewId,
   }
   if (cached) line.from_cache = true

@@ -18,7 +18,7 @@ import type { ExplainedProfile } from '../core/render.ts'
 import type { CalibrationMode, DiffSource } from '../core/types.ts'
 import { appendLog, logLine, lastReview } from '../node/data.ts'
 import { runReview, backendSources, probeStatus } from '../node/run.ts'
-import { loadConfig, readKeyFile } from '../node/file-config.ts'
+import { loadConfig, pluginVersion, readKeyFile } from '../node/file-config.ts'
 import type { LoadedConfig } from '../node/file-config.ts'
 import { repoRoot, defaultSource } from '../node/git.ts'
 import { nodeClock } from '../node/transport.ts'
@@ -208,7 +208,9 @@ async function reviewCommand(a: ParsedArgs, ctx: CliContext): Promise<number> {
   if (log !== undefined && log !== '') {
     try {
       const root = repoRoot(ctx.cwd, nodeClock.now() + 5000, ctx.env)
-      appendLog(resolve(ctx.cwd, log), logLine(r, { origin: 'cli', repo: basename(root ?? ctx.cwd), ...(identity ? { identity } : {}) }))
+      appendLog(resolve(ctx.cwd, log), logLine(r, {
+        origin: 'cli', repo: basename(root ?? ctx.cwd), version: pluginVersion(PLUGIN_ROOT), ...(identity ? { identity } : {}),
+      }))
     } catch (err) {
       ctx.writeErr(`[jev-review] log not written (${(err as NodeJS.ErrnoException).code ?? 'error'})\n`)
     }
@@ -272,11 +274,13 @@ async function statusCommand(a: ParsedArgs, ctx: CliContext): Promise<number> {
     return EXIT_ERROR
   }
   const v = s.value
+  const version = pluginVersion(PLUGIN_ROOT)
   if (a.options.has('--json')) {
-    ctx.write(`${JSON.stringify(v, null, 2)}\n`)
+    ctx.write(`${JSON.stringify({ pluginVersion: version, ...v }, null, 2)}\n`)
     return 0
   }
   const lines = [
+    `plugin: jev-hooks ${version}`,
     `backend: ${v.host}${v.local ? ' (local)' : ''} · source: ${v.layer}`,
     `model: requested ${v.requestedModel}, served ${v.model} · family ${v.family}`,
   ]

@@ -180,7 +180,7 @@ bench does not have in quantity:
 
 - **Source**: the hook's log (`log.jsonl` in the plugin's data directory). Each review
   records raw and calibrated values, the questions' hashes, the backend's fingerprint,
-  and later whether the commit happened after an escalation (`commit_done`). It never
+  the plugin version, and later whether the commit happened after an escalation (`commit_done`). It never
   records a diff, a title, a description or a key.
 - **Fit**: Platt scaling per yes/no question and temperature for choices and scores,
   with at least 50 to 100 labelled rows and 10 errors per unit; otherwise one fit per

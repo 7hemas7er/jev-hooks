@@ -49,6 +49,20 @@ export interface LoadedConfig extends ReviewConfig {
   userProblems: Problem[]              // invalid user files: the CLI exits with 4
 }
 
+// ─── Plugin version ───────────────────────────────────────────────────────────
+
+// The version in .claude-plugin/plugin.json, or '?'. It enters the hook's cache key (an
+// update invalidates it), the log line and the status: a session keeps the plugin it
+// started with, and the configuration hashes alone do not say which one that was.
+export function pluginVersion(root: string): string {
+  try {
+    const v = (JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as { version?: unknown }).version
+    return typeof v === 'string' ? v : '?'
+  } catch {
+    return '?'
+  }
+}
+
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 export function homeDir(env: NodeJS.ProcessEnv = process.env): string {

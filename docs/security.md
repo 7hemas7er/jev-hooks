@@ -64,7 +64,7 @@ Remote Control if you add `bridge`), so text that arrives by other routes
 (notifications, peers, other plugins) is never sent.
 
 **What never leaves.** The log (`log.jsonl` in the plugin's data directory) records
-outcomes, probabilities, hashes and the backend's fingerprint, never the diff, the title,
+outcomes, probabilities, hashes, the plugin version and the backend's fingerprint, never the diff, the title,
 the description, a prompt or a key. The router writes no file: its lines go to the
 transcript or to Claude Code's debug log and carry ids, levels and numbers, Claude
 Code's own messages and pieces of your own configuration (a wrong value in your

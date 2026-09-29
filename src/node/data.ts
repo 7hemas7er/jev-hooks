@@ -113,7 +113,7 @@ const round4 = (x: number): number => Math.round(x * 10_000) / 10_000
 // calibration fit, and a profile is bound to the real fingerprint.
 export function logLine(
   r: ReviewResult,
-  o: { origin: string; session?: string; repo?: string; ts?: Date; identity?: Pick<Identity, 'model' | 'fingerprint'> },
+  o: { origin: string; session?: string; repo?: string; version?: string; ts?: Date; identity?: Pick<Identity, 'model' | 'fingerprint'> },
 ): Record<string, unknown> {
   const values: Record<string, { raw?: number; cal: number }> = {}
   for (const [id, v] of Object.entries(r.values)) {
@@ -136,6 +136,7 @@ export function logLine(
   const line: Record<string, unknown> = { ts: localIso(o.ts), origin: o.origin }
   if (o.session !== undefined) line.session = o.session
   if (o.repo !== undefined) line.repo = o.repo
+  if (o.version !== undefined) line.plugin_version = o.version
   Object.assign(line, {
     outcome: r.outcome,
     lane: r.lane ?? null,

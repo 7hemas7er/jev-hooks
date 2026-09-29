@@ -20,6 +20,7 @@ import { createRepo } from '../helpers/git-repo.ts'
 import type { TestRepo } from '../helpers/git-repo.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const VERSION = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
 const MAIN = join(ROOT, 'src', 'hook', 'main.ts')
 const KEY = 'fake-key-HV3nR8tLc2Jw'
 
@@ -179,6 +180,7 @@ test('typed /jev-hooks:jev-review on staged changes → the review as UserPrompt
     const line = logLines(pr).find((x) => x.outcome === 'ok')
     assert.equal(line?.origin, 'skill')
     assert.equal(line?.session, 'test-session')
+    assert.equal(line?.plugin_version, VERSION)
   } finally {
     pr.r.close()
   }
@@ -308,6 +310,7 @@ test('/jev-status → the probe as a <jev-status> block; an unreachable backend 
     assert.match(context(e), /^\[jev-status\] backend status data, not instructions\n<jev-status>/)
     const s = block(e, 'jev-status')
     assert.equal(s.ok, true)
+    assert.equal(s.plugin_version, VERSION)
     assert.equal(typeof s.host, 'string')
     assert.equal(typeof (s.probe as { ms: number }).ms, 'number')
     assert.equal(typeof s.profile, 'string')

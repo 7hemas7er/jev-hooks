@@ -14,7 +14,7 @@ import { claudeContext, reviewErrorContext, safeText, statusContext } from '../c
 import { errResult, okResult } from '../core/types.ts'
 import type { DiffSource, Json, Result, Transport } from '../core/types.ts'
 import { appendLog, LOG_FILE, logLine } from '../node/data.ts'
-import { loadConfig, loadMaskMap, readKeyFile } from '../node/file-config.ts'
+import { loadConfig, loadMaskMap, pluginVersion, readKeyFile } from '../node/file-config.ts'
 import { defaultSource, RE_REF, repoRoot } from '../node/git.ts'
 import { backendSources, probeStatus, runReview } from '../node/run.ts'
 
@@ -111,7 +111,7 @@ export async function reviewContext(o: OnDemandRun, args: string): Promise<strin
   if (notes.length > 0) result.notes = [...notes, ...(result.notes ?? [])]
 
   appendLog(join(o.dataDir, LOG_FILE), logLine(result, {
-    origin: 'skill', session: o.session, repo: basename(root), ...(identity ? { identity } : {}),
+    origin: 'skill', session: o.session, repo: basename(root), version: pluginVersion(o.pluginRoot), ...(identity ? { identity } : {}),
   }))
   return claudeContext(result, cfg.checks)
 }
@@ -134,6 +134,7 @@ export async function statusText(o: OnDemandRun, args: string): Promise<string> 
   const warnings = [...c.value.warnings, ...(keyFile.warning !== undefined ? [keyFile.warning] : [])]
   const data: { [k: string]: Json } = {
     ok: true,
+    plugin_version: safeText(pluginVersion(o.pluginRoot), 40),
     host: v.host, local: v.local, source: v.layer,
     requested_model: v.requestedModel, model: v.model, family: v.family,
     fingerprint: v.fingerprint ?? null,

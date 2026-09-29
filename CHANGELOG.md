@@ -5,6 +5,20 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- The review log records the plugin version that ran (`plugin_version`), and
+  `/jev-status` and `jev-review status` show it first. A running Claude Code keeps the
+  plugin it loaded, across `/clear` too: the configuration hashes in the log showed the
+  reviews of 2026-09-29 still running on the checks of 0.5.0 hours after 0.6.0 was
+  installed, and nothing else in the log said so.
+
+### Verified
+
+- `weakens_expected` on the commit that set off the stale 0.5.0 reviewer: with 0.8.0,
+  `weakens_tests` read 0.92 and `weakens_expected` 0.075, under its 0.1, so the rule
+  did not fire and the lane was MERGE.
+
 ## 0.8.0 — 2026-09-29
 
 The effort router takes one step along its measured frontier: bug reports, refactors
