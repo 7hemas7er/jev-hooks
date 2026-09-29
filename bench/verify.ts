@@ -17,10 +17,13 @@
 // noul checks and the choice checks with a value): a new question there makes the
 // bench incomplete until it is labelled.
 //
-// Usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2]
+// Usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2] [--commits]
 // --only narrows the labels and the counts to the listed questions, for a set
 // labelled for fewer of them (live.jsonl, holdout-weakens.jsonl): without it every
 // row of such a set is rejected for its missing labels, before its diff is read.
+// --commits is for a set of real commits (live.jsonl): a diff may be longer than the
+// 40 lines a written row keeps to, and the minimum counts and the Italian majority,
+// which make a written bench balanced, do not apply. Every other check stays.
 // Exit 0 if everything adds up, 1 with the list of problems, 2 if the file cannot be read.
 import { readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -78,7 +81,7 @@ export interface VerifyResult {
   codeLanguages: Record<string, number>
 }
 
-export interface BenchConfig { checks: Checks; policy: Policy; questions: string[] }
+export interface BenchConfig { checks: Checks; policy: Policy; questions: string[]; commits?: boolean }
 
 function valueOrThrow<T>(r: Result<T>): T {
   if (!r.ok) throw new Error(r.error.message)
@@ -103,15 +106,15 @@ const short = (s: string, n = 60): string => (s.length <= n ? s : `${s.slice(0, 
 
 // Problems of a diff for the core parser. Empty = the parser reads it in full and as
 // it is written.
-export function diffProblems(diff: string, policy: Policy): string[] {
+export function diffProblems(diff: string, policy: Policy, maxLines: number = DIFF_LINES.max): string[] {
   const out: string[] = []
   if (diff === '') return ['empty diff']
   if (!diff.endsWith('\n')) out.push('the diff does not end with a newline')
   if (/[\r\0]/.test(diff)) out.push('the diff contains CR or NUL: the parser removes them and the model would see something else')
   const lines = diff.split('\n')
   if (lines[lines.length - 1] === '') lines.pop()
-  if (lines.length < DIFF_LINES.min || lines.length > DIFF_LINES.max) {
-    out.push(`the diff has ${lines.length} lines (allowed ${DIFF_LINES.min} to ${DIFF_LINES.max})`)
+  if (lines.length < DIFF_LINES.min || lines.length > maxLines) {
+    out.push(`the diff has ${lines.length} lines (allowed ${DIFF_LINES.min} to ${maxLines})`)
   }
   const maxLineChars = policy.state.max_line_chars
   lines.forEach((r, i) => {
@@ -297,7 +300,7 @@ function checkComposed(r: BenchRow, here: string, c: BenchConfig, out: string[])
     return
   }
   if (composed.diff === r.diff) return
-  for (const p of diffProblems(composed.diff, c.policy)) out.push(`${here}: after composing the placeholders, ${p}`)
+  for (const p of diffProblems(composed.diff, c.policy, c.commits ? Infinity : DIFF_LINES.max)) out.push(`${here}: after composing the placeholders, ${p}`)
   const withFloor = new Map(c.policy.detectors.filter((d) => d.floor !== null && d.check !== undefined).map((d) => [d.name, d.check as string]))
   const d = parseDiff(composed.diff, { maxBytes: MAX_DIFF_BYTES, maxLineChars: c.policy.state.max_line_chars })
   for (const hit of detect(d, { title: '', description: null }, c.policy).hits) {
@@ -341,7 +344,7 @@ export function verifyBench(text: string, file: string, c: BenchConfig = benchCo
     if (twin !== undefined) problems.push(`${here}: same diff as row ${twin}`)
     seenDiffs.set(r.diff, r.id)
 
-    for (const p of diffProblems(r.diff, c.policy)) problems.push(`${here}: ${p}`)
+    for (const p of diffProblems(r.diff, c.policy, c.commits ? Infinity : DIFF_LINES.max)) problems.push(`${here}: ${p}`)
     for (const [field, t] of [['title', r.title], ['description', r.description], ['diff', r.diff]] as const) {
       problems.push(...placeholders(t, `${here} ${field}`))
       // the value is not repeated in the message: it could be a real key pasted in
@@ -375,14 +378,14 @@ export function verifyBench(text: string, file: string, c: BenchConfig = benchCo
     const yes = rows.filter((r) => r.labels[q]).length
     return { question: q, yes, no: rows.length - yes, hardNegatives: hardNegatives.get(q) ?? 0 }
   })
-  if (rows.length < MINIMUMS.lines) problems.push(`${rows.length} valid rows: at least ${MINIMUMS.lines} are needed`)
-  for (const x of counts) {
+  if (!c.commits && rows.length < MINIMUMS.lines) problems.push(`${rows.length} valid rows: at least ${MINIMUMS.lines} are needed`)
+  for (const x of c.commits ? [] : counts) {
     if (x.yes < MINIMUMS.positives) problems.push(`${x.question}: ${x.yes} positives, at least ${MINIMUMS.positives} are needed`)
     if (x.no < MINIMUMS.negatives) problems.push(`${x.question}: ${x.no} negatives, at least ${MINIMUMS.negatives} are needed`)
     if (x.hardNegatives < MINIMUMS.hardNegatives) problems.push(`${x.question}: ${x.hardNegatives} hard negatives, at least ${MINIMUMS.hardNegatives} are needed`)
   }
   const commitLanguages: Record<string, number> = Object.fromEntries(COMMIT_LANGUAGES.map((l) => [l, rows.filter((r) => r.commit_language === l).length]))
-  if (rows.length > 0 && commitLanguages.it * 2 <= rows.length) problems.push(`Italian titles: ${commitLanguages.it} of ${rows.length}, they must be the majority`)
+  if (!c.commits && rows.length > 0 && commitLanguages.it * 2 <= rows.length) problems.push(`Italian titles: ${commitLanguages.it} of ${rows.length}, they must be the majority`)
   const codeLanguages: Record<string, number> = {}
   for (const r of rows) codeLanguages[r.language] = (codeLanguages[r.language] ?? 0) + 1
 
@@ -407,11 +410,12 @@ export function renderVerifyResult(e: VerifyResult): string {
   return out.join('\n') + '\n'
 }
 
-const USAGE = 'usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2]\n'
+const USAGE = 'usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2] [--commits]\n'
 
 export function main(argv: readonly string[], cwd: string = process.cwd()): number {
   const json = argv.includes('--json')
-  const rest = argv.filter((a) => a !== '--json')
+  const commits = argv.includes('--commits')
+  const rest = argv.filter((a) => a !== '--json' && a !== '--commits')
   let only: string[] | undefined
   const at = rest.indexOf('--only')
   if (at >= 0) {
@@ -436,6 +440,7 @@ export function main(argv: readonly string[], cwd: string = process.cwd()): numb
     }
     config.questions = config.questions.filter((q) => only.includes(q))
   }
+  if (commits) config.commits = true
   const path = rest[0] !== undefined ? resolve(cwd, rest[0]) : join(ROOT, 'bench', 'dev.jsonl')
   let text: string
   try {

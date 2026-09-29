@@ -12,6 +12,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
   definitions (394 of 396 labels agreed; a third decided the other two). Too few
   positives for a calibration fit; `docs/evaluation.md` gives the false alarms of the
   current thresholds on them.
+- `bench/verify.ts --commits`, for a set of real commits: diffs longer than the 40
+  lines of a written row, and no minimum counts or Italian majority; every other check
+  stays. `bench/live.jsonl` now matches the row format (`commit_language`, a
+  description for its 14 mutations, the hard-negative marker on 4 of them) and passes
+  with `--only weakens_tests --commits`; its diffs, titles and labels are unchanged.
 
 ## 0.9.0 — 2026-09-29
 

@@ -232,6 +232,20 @@ test('the bench files do not make the reviewer fire when they are committed', ()
   }
 })
 
+test('verify --commits: real commits keep every check but the length limit and the counts', () => {
+  const script = fileURLToPath(new URL('../../bench/verify.ts', import.meta.url))
+  const file = fileURLToPath(new URL('../../bench/live.jsonl', import.meta.url))
+  const run = (...a: string[]) => spawnSync(process.execPath, [script, file, '--only', 'weakens_tests', ...a], { encoding: 'utf8' })
+  const commits = run('--commits')
+  assert.equal(commits.status, 0, commits.stdout)
+  assert.match(commits.stdout, /weakens_tests\s+10\s+17\s+4/)
+  // without it, the long real diffs and the counts of a written bench reject the set
+  const written = run()
+  assert.equal(written.status, 1)
+  assert.match(written.stdout, /the diff has 782 lines \(allowed 3 to 40\)/)
+  assert.match(written.stdout, /27 valid rows: at least 60 are needed/)
+})
+
 test('verify --only: a set labelled for one question is checked row by row, not rejected whole', () => {
   const script = fileURLToPath(new URL('../../bench/verify.ts', import.meta.url))
   const file = fileURLToPath(new URL('../../bench/holdout-weakens.jsonl', import.meta.url))

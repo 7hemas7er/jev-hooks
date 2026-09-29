@@ -359,6 +359,15 @@ the CI (positives) and 4 mutations that do not (hard negatives). It is labelled 
 `weakens_tests` only, and is built by the reviewer's own maintainers, so it serves to
 choose a wording, never to check one: that stays the holdout set's job.
 
+It is checked with `node bench/verify.ts bench/live.jsonl --only weakens_tests
+--commits`: real commits are longer than the 40 lines a written row keeps to, and a set
+of them is not balanced by design, so `--commits` drops the length limit and the
+minimum counts, and keeps every other check. On 2026-09-29 the rows gained
+`commit_language`, a description for the 14 mutations and the hard-negative marker on
+the 4 that do not weaken, to match the row format; diffs, titles and labels did not
+change, and `weakens_tests` sees only the diff. The 2026-09-28 reports below were
+measured on the earlier file (sha256 `9ef7b82d…`, `git show 8e181ea:bench/live.jsonl`).
+
 Second round, 2026-09-28 (`variants-weakens.json`, then `variants-weakens-2.json`):
 `i_expected` separated both `dev.jsonl` (AUROC 1.000, mean p on negatives 0.033) and
 `live.jsonl` (AUROC 1.000, 0.094 against 0.514 for the current text). On the frozen
