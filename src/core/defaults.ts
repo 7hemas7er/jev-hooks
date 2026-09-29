@@ -35,10 +35,10 @@ export const DEFAULT_ROUTER = {
   "base": {
     "question": -2,
     "small_edit": -2,
-    "bug_with_error": 0,
+    "bug_with_error": -1,
     "feature": -1,
-    "refactor": 0,
-    "design": 0,
+    "refactor": -1,
+    "design": -1,
     "review": -1,
     "ops": -2,
     "continue": "previous"

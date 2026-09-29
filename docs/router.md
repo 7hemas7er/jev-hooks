@@ -68,7 +68,7 @@ The effort moves along low < medium < high < xhigh < max, starting from the one 
 session sends (your setting, or the model's default), in this order:
 
 1. **Base step** from the task kind, relative to the session: question −2, small_edit
-   −2, bug_with_error 0, feature −1, refactor 0, design 0, review −1, ops −2.
+   −2, bug_with_error −1, feature −1, refactor −1, design −1, review −1, ops −2.
    `continue` keeps the effort the router gave the previous turn.
 2. **Adjustments**, in file order: `scope` at level 2 or more, one step up;
    `multi_deliverable` ≥ 0.6, one step up; `underspecified` ≥ 0.6 or
@@ -82,9 +82,9 @@ session sends (your setting, or the model's default), in this order:
    `max_effort` is one more cap. The file's own `max_effort` (high) is the cap only with
    `respect_session_effort: false`, the one setting under which the router may raise.
 
-With the session at high, a prompt classified as small_edit (a rename) goes to low and
-a feature to medium; a bug report with its stack trace stays at high; a request to
-deploy to production "quickly" stays at high too (quick says low, the floor says high).
+With the session at high, a prompt classified as small_edit (a rename) goes to low, and
+a feature or a bug report with its stack trace to medium; a request to deploy to
+production "quickly" stays at high (quick says low, the floor says high).
 With the session at max, a question goes to high: the steps are relative.
 
 The turn keeps its effort when:
@@ -318,8 +318,14 @@ The router's questions have their own bench: 120 labelled prompts to choose on
   mostly acts as a floor at medium; `scope` is right 53% of the time, 80% within one
   level.
 - End to end, from a session at xhigh the router went below the labelled effort on
-  1 prompt in 110 and saved 90 of the 177 steps the labels allow; from a session at
-  high, 8 in 110 and 52 of 80.
+  1 prompt in 110 and saved 96 of the 177 steps the labels allow; from a session at
+  high, 10 in 110 and 55 of 80.
+- The rules trade turns below the labelled effort for steps saved. Replayed on the same
+  answers, both sessions together on the holdout: bug_with_error, refactor and design
+  at 0 went below on 9 of 220 and saved 142 of 257 steps; at −1, the shipped choice,
+  11 and 151; with review at −2 as well, 15 and 162; with `scope` raising only at
+  level 3 instead, 29 and 205. Each of the two turns the −1 step adds below the label
+  is one step below, from a session at high.
 
 The thresholds were set by hand and checked on these sets, not fitted. The router
 often leaves the effort alone, which is the safe side. The debug log prints every

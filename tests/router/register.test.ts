@@ -69,6 +69,10 @@ function reply(task: string, o: { top?: number; nouls?: Record<string, number>; 
   return { status: 200, text: JSON.stringify({ model: 'jev-1.13.0', answers }) }
 }
 
+// A refactor the shipped rules leave at the session's effort: its base step lowers it,
+// and the risky_irreversible floor holds it at high.
+const leftAlone = (): HttpAnswer => reply('refactor', { nouls: { risky_irreversible: 0.9 } })
+
 const bodyOf = (w: FakeClaude, i: number): { state: string; model: string; questions: Record<string, unknown> } => JSON.parse(w.fetches[i].init.body ?? '')
 // The project router.json files read, in order.
 const projectReads = (w: FakeClaude): (string | undefined)[] =>
@@ -198,12 +202,12 @@ test('a classified prompt lowers its turn at index 0 and again at every later st
   assert.equal(w.status.at(-1), 'jev router: small_edit 0.90 → low')
 
   // the next turn starts from the session again
-  w.answer(reply('refactor'))
+  w.answer(leftAlone())
   assert.equal(await turn(w, 'move the parser into its own module', 't2'), 'high')
   await w.step({ turnId: 't2', index: 1, effort: 'high' })
   assert.equal(w.lastEffort(), 'high')
   assert.equal(w.status.at(-1), 'jev router: refactor 0.90, effort unchanged (high)')
-  assert.match(w.debug().at(-1) ?? '', /^\[jev-hooks\] effort high: unchanged \(refactor 0\.90: 0 → high\)$/)
+  assert.match(w.debug().at(-1) ?? '', /^\[jev-hooks\] effort high: unchanged \(refactor 0\.90: -1 → medium; floor risky_irreversible 0\.90 → high\)$/)
 })
 
 test('an effort someone else changed during the turn is not overwritten', async () => {
@@ -255,7 +259,7 @@ test('a failure at index 0 after the decision leaves the whole turn at the sessi
   assert.deepEqual(log.transcript(), [])
   assert.equal(log.status.at(-1), undefined)
   // no change was made: a status saying so is still true, and stays
-  log.answer(reply('refactor'))
+  log.answer(leftAlone())
   assert.equal(await turn(log, 'move the parser into its own module', 't2'), 'high')
   assert.equal(log.status.at(-1), 'jev router: refactor 0.90, effort unchanged (high)')
 })
@@ -1055,7 +1059,7 @@ test('cache guard: two cold steps after an effort change turn the router off for
   assert.equal(w.lastEffort(), 'low')
   // turn 2, 20 s later: left at high, and the cache served nothing of the prefix
   await w.advance(20_000)
-  w.answer(reply('refactor'))
+  w.answer(leftAlone())
   await w.submit({ text: 'move the parser into its own module' }, { start: 't2' })
   await w.step({ turnId: 't2', index: 0, effort: 'high' }, usage(18_000, 0, 3_000))
   assert.equal(w.lastEffort(), 'high')
@@ -1087,13 +1091,13 @@ test('cache guard: a warm cache after the change, or a long pause, is not held a
   for (let i = 2; i < 6; i++) {
     // alternately high and low, every time with most of the prefix from the cache
     await w.advance(10_000)
-    w.answer(reply(i % 2 === 0 ? 'refactor' : 'small_edit'))
+    w.answer(i % 2 === 0 ? leftAlone() : reply('small_edit'))
     await w.submit({ text: `task ${i}` }, { start: `t${i}` })
     await w.step({ turnId: `t${i}`, index: 0, effort: 'high' }, usage(1_000, 19_000, 1_000))
   }
   // a pause longer than the cache lives: a cold step says nothing
   await w.advance(ROUTER.cache_guard.max_gap_ms + 1)
-  w.answer(reply('refactor'))
+  w.answer(leftAlone())
   await w.submit({ text: 'task 6' }, { start: 't6' })
   await w.step({ turnId: 't6', index: 0, effort: 'high' }, usage(20_000, 0, 1_000))
   assert.ok(!w.logs.some((l) => l.text.includes('prompt cache')), JSON.stringify(w.logs))
@@ -1116,7 +1120,7 @@ async function coldAfterIdle(between: (w: FakeClaude, round: number) => Promise<
     await between(w, round)
     await w.advance(20_000)
     // round 1 left at high after the low turn, round 2 lowered after the high one
-    w.answer(reply(round === 1 ? 'refactor' : 'small_edit'))
+    w.answer(round === 1 ? leftAlone() : reply('small_edit'))
     await w.submit({ text: `task ${round}` }, { start: `t${round + 1}` })
     await w.step({ turnId: `t${round + 1}`, index: 0, effort: 'high' }, usage(18_000, 0, 3_000))
     assert.equal(w.lastEffort(), round === 1 ? 'high' : 'low')
@@ -1130,7 +1134,7 @@ const noGuardLine = (w: FakeClaude): void => {
 
 test('cache guard: a prompt dropped beneath or a ! command after a long pause does not shorten the gap', async () => {
   const w = await coldAfterIdle(async (x, round) => {
-    x.answer(reply('refactor'))
+    x.answer(leftAlone())
     await x.submit({ text: `deploy it ${round}` }, { drop: 'blocked by a UserPromptSubmit hook' })
     await x.submit({ text: '!git status' })
   })
@@ -1165,7 +1169,7 @@ test('cache guard: a prompt whose turn starts long after it came is timed from t
     const w = world()
     w.answer(reply('small_edit'))
     assert.equal(await turn(w, 'rename x to y in src/a.ts', 't1'), 'low', name)
-    w.answer(reply('refactor'))
+    w.answer(leftAlone())
     await w.advance(10_000)
     if (prompt.turnId) await w.submit(prompt)
     // t1's last request, warm
@@ -1184,7 +1188,7 @@ test('cache guard: a prompt whose turn starts long after it came is timed from t
 
 test('cache guard: a turn whose start time cannot be read keeps its classification, and its first step is not judged', async () => {
   const w = world()
-  w.answer(reply('refactor'))
+  w.answer(leftAlone())
   assert.equal(await turn(w, 'move the parser into its own module', 't1'), 'high')
   await w.step({ turnId: 't1', index: 1, effort: 'high' }, usage(500, 15_000, 4_500))
   // 30 s later: lowered, and cold; the gap is not known, so no suspect
@@ -1207,7 +1211,7 @@ test('turn.step calls nothing on $ but ui.log and ui.status, and turn.start only
   await w.step({ turnId: 't1', index: 1, effort: 'high' }, usage(500, 15_000, 4_500))
   await w.step({ turnId: 't1', index: 0, effort: 'high', agentId: 'a1' })
   await w.advance(1_000)
-  w.answer(reply('refactor'))
+  w.answer(leftAlone())
   await w.submit({ text: 'move the parser' }, { start: 't2' })
   await w.step({ turnId: 't2', index: 0, effort: 'high' }, usage(18_000, 0, 3_000))
   await w.advance(1_000)

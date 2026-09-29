@@ -700,8 +700,8 @@ test('parseClassification: the option is the argmax of the probabilities, not th
     assert.deepEqual(c.choices.task_kind, { option: 'design', p: c.pTask }, model)
     assert.equal(c.choices.explicit_depth.option, 'none', model)
     assert.ok(near(c.choices.explicit_depth.p, 0.55), model)
-    // the claimed small_edit and quick would have lowered an xhigh turn to low; design leaves it
-    assert.match(chooseEffort(c, { model: OPUS, effort: 'xhigh' }, CFG).reason, /^unchanged \(design 0\.55: 0 → xhigh\)$/, model)
+    // the claimed small_edit and quick would have lowered an xhigh turn to low; design takes one step
+    assert.match(chooseEffort(c, { model: OPUS, effort: 'xhigh' }, CFG).reason, /^design 0\.55: -1 → high$/, model)
   }
   // on an exact tie the claim stays
   for (const claim of ['design', 'small_edit']) {
@@ -818,10 +818,10 @@ const rows: Row[] = [
   // every task kind, relative steps from a high session
   ['question', cls('question'), { model: OPUS, effort: 'high' }, {}, 'low', /^question 0\.90: -2 → low$/],
   ['small_edit', cls('small_edit', { p: 0.91 }), { model: OPUS, effort: 'high' }, {}, 'low', /^small_edit 0\.91: -2 → low$/],
-  ['bug_with_error', cls('bug_with_error'), { model: OPUS, effort: 'high' }, {}, undefined, /^unchanged \(bug_with_error 0\.90: 0 → high\)$/],
+  ['bug_with_error', cls('bug_with_error'), { model: OPUS, effort: 'high' }, {}, 'medium', /^bug_with_error 0\.90: -1 → medium$/],
   ['feature', cls('feature'), { model: OPUS, effort: 'high' }, {}, 'medium', /^feature 0\.90: -1 → medium$/],
-  ['refactor', cls('refactor'), { model: OPUS, effort: 'high' }, {}, undefined, /^unchanged \(refactor/],
-  ['design', cls('design'), { model: OPUS, effort: 'high' }, {}, undefined, /^unchanged \(design/],
+  ['refactor', cls('refactor'), { model: OPUS, effort: 'high' }, {}, 'medium', /^refactor 0\.90: -1 → medium$/],
+  ['design', cls('design'), { model: OPUS, effort: 'high' }, {}, 'medium', /^design 0\.90: -1 → medium$/],
   ['review', cls('review'), { model: OPUS, effort: 'high' }, {}, 'medium', /^review 0\.90: -1 → medium$/],
   ['ops', cls('ops'), { model: OPUS, effort: 'high' }, {}, 'low', /^ops 0\.90: -2 → low$/],
   ['continue without a previous turn', cls('continue'), { model: OPUS, effort: 'high' }, {}, undefined, /^unchanged \(continue 0\.90: previous → high\)$/],
@@ -839,8 +839,8 @@ const rows: Row[] = [
   // floors after explicit_depth
   ['quick and risky: the floor wins', cls('feature', { depth: ['quick', 0.6], nouls: { risky_irreversible: 0.73 } }), { model: OPUS, effort: 'xhigh' }, {}, 'high', /^feature 0\.90: -1 → high; explicit_depth quick 0\.60: low → low; floor risky_irreversible 0\.73 → high$/],
   // the cap: the session's effort
-  ['the cap is the session', cls('bug_with_error', { nouls: { risky_irreversible: 0.9 } }), { model: OPUS, effort: 'medium' }, {}, undefined, /^unchanged \(bug_with_error 0\.90: 0 → medium; floor risky_irreversible 0\.90 → high; cap medium\)$/],
-  ['session xhigh and a bug with an error', cls('bug_with_error'), { model: OPUS, effort: 'xhigh' }, {}, undefined, /^unchanged \(bug_with_error 0\.90: 0 → xhigh\)$/],
+  ['the cap is the session', cls('bug_with_error', { nouls: { risky_irreversible: 0.9 } }), { model: OPUS, effort: 'medium' }, {}, undefined, /^unchanged \(bug_with_error 0\.90: -1 → low; floor risky_irreversible 0\.90 → high; cap medium\)$/],
+  ['session xhigh and a bug with an error', cls('bug_with_error'), { model: OPUS, effort: 'xhigh' }, {}, 'high', /^bug_with_error 0\.90: -1 → high$/],
   ['session max and a question', cls('question'), { model: OPUS, effort: 'max' }, {}, 'high', /^question 0\.90: -2 → high$/],
   ['min_effort', cls('question'), { model: OPUS, effort: 'high' }, { min_effort: 'medium' }, 'medium', /^question 0\.90: -2 → low; min medium$/],
   ['the cap wins over min_effort', cls('question'), { model: OPUS, effort: 'low' }, { min_effort: 'medium' }, undefined, /; min medium; cap low\)$/],
@@ -850,10 +850,10 @@ const rows: Row[] = [
   ['absent effort, high assumed', cls('question'), { model: OPUS }, { assume_session_effort: 'high' }, 'low', /^question 0\.90: -2 → low$/],
   ['an effort the scale does not know', cls('question'), { model: OPUS, effort: 'turbo' as never }, {}, undefined, /^session effort is not a known level$/],
   // the project's cap always applies
-  ['project cap below the session', cls('bug_with_error'), { model: OPUS, effort: 'high' }, { projectCap: 'medium' }, 'medium', /^bug_with_error 0\.90: 0 → high; cap medium$/],
+  ['project cap below the session', cls('bug_with_error'), { model: OPUS, effort: 'xhigh' }, { projectCap: 'medium' }, 'medium', /^bug_with_error 0\.90: -1 → high; cap medium$/],
   ['project cap without respect_session_effort', cls('design', { nouls: { risky_irreversible: 0.9 } }), { model: OPUS, effort: 'xhigh' }, { respect_session_effort: false, projectCap: 'low' }, 'low', /; cap low$/],
   // without respect_session_effort the cap is max_effort, and the router may raise
-  ['respect off: raise up to max_effort', cls('bug_with_error', { nouls: { risky_irreversible: 0.9 } }), { model: OPUS, effort: 'medium' }, { respect_session_effort: false }, 'high', /^bug_with_error 0\.90: 0 → medium; floor risky_irreversible 0\.90 → high$/],
+  ['respect off: raise up to max_effort', cls('bug_with_error', { nouls: { risky_irreversible: 0.9 } }), { model: OPUS, effort: 'medium' }, { respect_session_effort: false }, 'high', /^bug_with_error 0\.90: -1 → low; floor risky_irreversible 0\.90 → high$/],
   ['respect off: max_effort caps a max session', cls('bug_with_error'), { model: OPUS, effort: 'max' }, { respect_session_effort: false }, 'high', /; cap high$/],
   // what leaves the turn alone before any rule
   ['router off', cls('question'), { model: OPUS, effort: 'high' }, { enabled: false }, undefined, /^router off$/],

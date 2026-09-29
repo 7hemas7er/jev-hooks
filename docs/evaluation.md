@@ -159,8 +159,10 @@ you that the thresholds no longer apply to that question until you measure again
   `weakens_expected` in `checks.json`, asked as an `unless` condition of the rule.
 - **The effort router** on its dev and holdout sets (`2026-09-28-router-*`): the
   questions' accuracy and AUROC, the effort each configuration would pick, and a
-  frontier between under-routed turns and effort saved. `config/router.json` sits at
-  the cautious end; the step to take along the frontier is the user's choice.
+  frontier between under-routed turns and effort saved. `config/router.json` sits one
+  step from the cautious end: bug reports, refactors and design requests lower the
+  effort one step instead of none (on the holdout, 11 of 220 turns below the label
+  instead of 9, 151 of 257 steps saved instead of 142).
 
 All on rizzo-flow serving Spark-X2.5-4B BF16 on a DGX Spark, profile
 `spark-bf16-2026-09`, uncalibrated, except one comparison:

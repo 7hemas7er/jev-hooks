@@ -7,6 +7,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ### Changed
 
+- The effort router lowers a bug report, a refactor or a design request one step from
+  the session's effort (base −1, was 0). Chosen on the router's frontier, replayed on
+  the answers already measured: on the holdout, both sessions together, 11 of 220
+  turns below the labelled effort instead of 9, and 151 of 257 steps saved instead of
+  142; each added turn is one step below, from a session at high
+  ([Measured, not fitted](docs/router.md#measured-not-fitted)).
 - The README keeps the overview (why typed decisions, what is in the box, a short
   "How it works", a quick start and an index of the documentation); its long sections
   moved verbatim to `docs/`: `docs/how-it-works.md`, `docs/backends.md`,
