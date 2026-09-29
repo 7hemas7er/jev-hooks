@@ -4,7 +4,7 @@
 
 export const DEFAULT_ROUTER = {
   "version": 1,
-  "_comment": "Effort router (hooks/register.ts, a function hook, early access). Off unless the effort_router option is true. It needs Opus 5.5 or Fable 5.1 WITH the per-turn-control beta on the account, otherwise every effort change clears the prompt cache; cache_guard turns the router off for the session when it sees that happen. Questions in English (rizzo's quality is measured only in English). Thresholds on probabilities calibrated with calibration.json: values NOT fitted. base: numbers = steps relative to the session's effort (0 = unchanged), strings = absolute level.",
+  "_comment": "Effort router (hooks/register.ts, a function hook, early access). Off unless the effort_router option is true. It needs Opus 5.5, Fable 5.1 or Sonnet 5.5 WITH the per-turn-control beta on the account, otherwise every effort change clears the prompt cache; cache_guard turns the router off for the session when it sees that happen. Questions in English (rizzo's quality is measured only in English). Thresholds on probabilities calibrated with calibration.json: values NOT fitted. base: numbers = steps relative to the session's effort (0 = unchanged), strings = absolute level.",
   "enabled": true,
   "timeout_ms": 1500,
   "busy_after_timeout_ms": 30000,
@@ -19,7 +19,8 @@ export const DEFAULT_ROUTER = {
   ],
   "only_models": [
     "opus-5-5",
-    "fable-5-1"
+    "fable-5-1",
+    "sonnet-5-5"
   ],
   "min_effort": "low",
   "max_effort": "high",

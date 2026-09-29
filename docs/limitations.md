@@ -38,6 +38,14 @@
   `timeout_ms` and left that turn as it was. `CLAUDE_EFFORT` in a Bash command shows
   the session's effort, not the one the router sets for a request. Later sessions
   checked the `claude-fable-5-1` id and a prompt typed in the interactive composer.
+  On 2.1.284 (2026-09-29), Sonnet 5.5 in two arms of two headless turns each, without
+  MCP servers, against a fake backend: with the router the first request carried
+  effort `low` and the second `high`, each as a `role: "system"` message in the
+  conversation under the per-turn-control beta, and `system/init` reported
+  `per_turn_effort_active: true`; without it both stayed at `high`. The second turn
+  read the same 27,547 cached tokens in both arms, so the change of effort cost
+  nothing in cache. Neither arm read the whole previous request back: a new
+  `claude -p --continue` process does not rebuild the prefix byte for byte.
   On 2.1.284 a copy with a broken module (`on('turn.stepX', …)`) was refused at load
   ("hooks module … failed to load" in the debug log) while the commit hook of the same
   plugin still fired and denied a commit. Esc pressed while the router waited for a

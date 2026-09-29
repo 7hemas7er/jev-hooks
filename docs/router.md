@@ -38,11 +38,11 @@ you press Enter
   They never load under `--bare`, `disableAllHooks` or `allowManagedHooksOnly`.
   Function hooks are early access: their API can change between Claude Code releases
   without notice, and the router was written and tested against 2.1.283.
-- **Opus 5.5 or Fable 5.1, and the per-turn-control beta on your account.** Only with
+- **Opus 5.5, Fable 5.1 or Sonnet 5.5, and the per-turn-control beta on your account.** Only with
   both does a change of effort keep the prompt cache. Without the beta, or after Claude
   Code drops it until `/clear` or `/compact`, every change of effort empties the cache
   and the turn pays for the whole context again. The plugin can check the model
-  (`only_models`: `opus-5-5` and `fable-5-1`, matched case-insensitively inside the
+  (`only_models`: `opus-5-5`, `fable-5-1` and `sonnet-5-5`, matched case-insensitively inside the
   model id) but cannot see the beta. That is why the router is opt-in, and why it
   watches the cache itself ([The cache guard](#the-cache-guard)).
 - **A backend**: `router_url`, or `review_url` when it is empty

@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- The effort router also runs on Sonnet 5.5 (`only_models` gains `sonnet-5-5`). Claude
+  Code 2.1.284's model catalog gives `claude-sonnet-5-5` the per-turn effort capability
+  that Opus 5.5 and Fable 5.1 have, and Sonnet 5 lacks; Sonnet 5 stays out.
+
 ### Added
 
 - The review log records the plugin version that ran (`plugin_version`), and
@@ -15,6 +21,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ### Verified
 
+- The router on Sonnet 5.5, live on 2.1.284: two arms of two headless turns without MCP
+  servers. With the router the effort went from `low` to `high` as per-turn
+  `role: "system"` messages, and the second turn read the same 27,547 cached tokens as
+  the arm without it, where the effort stayed at `high`.
 - `weakens_expected` on the commit that set off the stale 0.5.0 reviewer: with 0.8.0,
   `weakens_tests` read 0.92 and `weakens_expected` 0.075, under its 0.1, so the rule
   did not fire and the lane was MERGE.

@@ -806,8 +806,8 @@ test('effort arithmetic: steps clamped to the scale, max and min', () => {
 })
 
 test('modelAllowed: a case-insensitive substring of only_models', () => {
-  for (const m of ['claude-opus-5-5', 'claude-opus-5-5[1m]', 'CLAUDE-FABLE-5-1', 'fable-5-1-20260901']) assert.equal(modelAllowed(CFG, m), true, m)
-  for (const m of ['claude-sonnet-5', 'claude-opus-5-1', 'claude-opus-4-5', '', undefined as never]) assert.equal(modelAllowed(CFG, m), false, String(m))
+  for (const m of ['claude-opus-5-5', 'claude-opus-5-5[1m]', 'CLAUDE-FABLE-5-1', 'fable-5-1-20260901', 'claude-sonnet-5-5']) assert.equal(modelAllowed(CFG, m), true, m)
+  for (const m of ['claude-sonnet-5', 'claude-sonnet-4-6', 'claude-opus-5-1', 'claude-opus-4-5', '', undefined as never]) assert.equal(modelAllowed(CFG, m), false, String(m))
 })
 
 type Row = [string, Classification | null, RouterContext, Partial<RouterConfig>, Effort | undefined, RegExp]
