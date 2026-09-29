@@ -12,6 +12,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
   (`actions/create-github-app-token`, pinned), and pins the 0.6.0 release. Checked on
   real pull requests: a required check from the app cannot be imitated by a job of the
   same name.
+- The example waits for the backend's tailnet node (`ping`, from `JEV_TAILSCALE_PING`)
+  before the review, and `docs/spark.md` gives a tailnet policy that lets `tag:ci` reach
+  only the proxy's port, with tests that hold it there. Checked from GitHub's runner:
+  without the wait the first request failed to resolve the name; with it, rizzo on the
+  Spark reviewed a real pull request.
 
 ## 0.6.0 — 2026-09-29
 

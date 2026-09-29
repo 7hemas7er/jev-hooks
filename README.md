@@ -64,7 +64,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](#effort-router-opt-in) |
-| GitHub Action (`action.yml`) | built; two-phase flow run on real pull requests with a fake backend, and a required check from a dedicated App that a same-named job cannot imitate | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
+| GitHub Action (`action.yml`) | built; run on real pull requests: rizzo over the tailnet, a required check from a dedicated App that a same-named job cannot imitate; not yet a fork from another account | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](#github-action) |
 
 ## How it works
 
@@ -398,8 +398,9 @@ never runs next to your secrets. Copy the two files of
 
 Set the variable `JEV_URL` (and optionally `JEV_MODEL`) and, if the backend needs one,
 the secret `JEV_API_KEY`. A backend on your tailnet takes an ephemeral node:
-`JEV_TAILSCALE=true` and the `TS_OAUTH_*` secrets, with an ACL that reaches only the
-backend's port. Pin the action to the SHA of a release you have read.
+`JEV_TAILSCALE=true`, `JEV_TAILSCALE_PING` (the backend's tailnet name, waited for
+before the review) and the `TS_OAUTH_*` secrets, with an ACL that reaches only the
+backend's port ([docs/spark.md](docs/spark.md#6-from-github-actions)). Pin the action to the SHA of a release you have read.
 
 | Outcome | Check conclusion (default) |
 |---|---|
@@ -434,9 +435,13 @@ added a token variable. Then a dedicated GitHub App (Checks: read and write, no
 webhook) created the check run, required from that app in branch protection with
 admins included: a plain pull request got `jev-review` from the app and became
 mergeable, and a pull request that forged the first phase and added its own job named
-`jev-review`, which succeeded, stayed blocked, and a merge attempt was refused. Not run
-yet: a real backend reached over the tailnet, and a pull request from another account's
-fork.
+`jev-review`, which succeeded, stayed blocked, and a merge attempt was refused. Last,
+the review reached rizzo on the Spark through an ephemeral `tag:ci` node, allowed by the
+tailnet policy to reach only the proxy's port: the 0.6.0 action reviewed a real pull
+request in 3.0 s (two requests, the Spark's calibration profile matched by fingerprint)
+and the app's check came back `success` with NITS. The first attempt, without the
+`ping` input, failed to resolve the Spark's name. Not run yet: a pull request from
+another account's fork.
 
 ## Configuration: open a JSON, never touch the code
 

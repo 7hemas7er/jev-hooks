@@ -133,10 +133,30 @@ sudo tailscale serve --bg --https=8443 http://192.168.1.50:8017
 ```
 
 Tailscale terminates TLS with the machine's tailnet certificate and forwards to Caddy,
-whose `:8017` site answers whatever `Host` the request carries. In the tailnet's ACL,
-let `tag:ci` reach only that port of the Spark. In the repository, set the variables
-`JEV_TAILSCALE=true` and `JEV_URL` (`https://<spark>.<tailnet>.ts.net:8443`), and the
-secrets `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` and `JEV_API_KEY` (the proxy's token).
+whose `:8017` site answers whatever `Host` the request carries.
+
+In the tailnet policy, let `tag:ci` reach only that port of the Spark, and let the
+policy's own tests hold it there (the console refuses a change that breaks them):
+
+```json
+"tagOwners": { "tag:ci": ["autogroup:admin"] },
+"grants": [
+    { "src": ["tag:ci"], "dst": ["100.64.0.10"], "ip": ["tcp:8443"] },
+],
+"tests": [
+    { "src": "tag:ci", "accept": ["100.64.0.10:8443"], "deny": ["100.64.0.10:22", "100.64.0.10:8017"] },
+],
+```
+
+A rule that lets `*` reach `*:*` would let the CI node reach every machine: narrow its
+source to `autogroup:member` first. Then create an OAuth client (Settings → Trust
+credentials) with the writable `auth_keys` scope and the tag `tag:ci`.
+
+In the repository, set the variables `JEV_TAILSCALE=true`, `JEV_URL`
+(`https://<spark>.<tailnet>.ts.net:8443`) and `JEV_TAILSCALE_PING` (`<spark>.<tailnet>.ts.net`),
+and the secrets `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` and `JEV_API_KEY` (the proxy's
+token). The ping matters: a new node reaches its peers only once they have heard of it,
+and without the wait the review's first request failed to resolve the Spark's name.
 
 ## 7. CLM-8B instead of rizzo (measured, not recommended)
 

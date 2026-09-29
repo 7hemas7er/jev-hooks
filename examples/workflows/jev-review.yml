@@ -6,8 +6,9 @@
 #
 # Repository settings: variable JEV_URL (the backend's base URL), optionally JEV_MODEL;
 # secret JEV_API_KEY when the backend needs a key. For a backend on your tailnet, set
-# the variable JEV_TAILSCALE to true and the two TS_OAUTH_* secrets (an ephemeral node
-# tagged tag:ci, with an ACL that reaches only the backend's port). For a required check
+# the variable JEV_TAILSCALE to true, JEV_TAILSCALE_PING to the backend's tailnet name,
+# and the two TS_OAUTH_* secrets (an ephemeral node tagged tag:ci, with an ACL that
+# reaches only the backend's port). For a required check
 # a fork cannot imitate, set the variable JEV_APP_CLIENT_ID and the secret
 # JEV_APP_PRIVATE_KEY of a dedicated GitHub App (permission Checks: read and write, no
 # webhook, installed on this repository), and require "jev-review" from that app in
@@ -46,6 +47,9 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+          # wait until the backend's node accepts this new one: without it the first
+          # request can fail to resolve the name (ENOTFOUND)
+          ping: ${{ vars.JEV_TAILSCALE_PING }}
       # Only with a dedicated app: its token creates the check run, so a job named
       # jev-review in a fork cannot stand in for it. Without it, the Actions token does.
       - id: app
