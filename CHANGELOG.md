@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.8.0 — 2026-09-29
+
+The effort router takes one step along its measured frontier: bug reports, refactors
+and design requests now lower the effort one step. The long README sections moved to
+`docs/`.
+
 ### Changed
 
 - The effort router lowers a bug report, a refactor or a design request one step from
