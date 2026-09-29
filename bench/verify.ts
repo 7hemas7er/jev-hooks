@@ -17,7 +17,10 @@
 // noul checks and the choice checks with a value): a new question there makes the
 // bench incomplete until it is labelled.
 //
-// Usage: node bench/verify.ts [file.jsonl] [--json]
+// Usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2]
+// --only narrows the labels and the counts to the listed questions, for a set
+// labelled for fewer of them (live.jsonl, holdout-weakens.jsonl): without it every
+// row of such a set is rejected for its missing labels, before its diff is read.
 // Exit 0 if everything adds up, 1 with the list of problems, 2 if the file cannot be read.
 import { readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -403,12 +406,34 @@ export function renderVerifyResult(e: VerifyResult): string {
   return out.join('\n') + '\n'
 }
 
+const USAGE = 'usage: node bench/verify.ts [file.jsonl] [--json] [--only q1,q2]\n'
+
 export function main(argv: readonly string[], cwd: string = process.cwd()): number {
   const json = argv.includes('--json')
   const rest = argv.filter((a) => a !== '--json')
+  let only: string[] | undefined
+  const at = rest.indexOf('--only')
+  if (at >= 0) {
+    const v = rest[at + 1]
+    if (v === undefined || v.startsWith('-')) {
+      process.stderr.write(USAGE)
+      return 2
+    }
+    only = v.split(',').map((q) => q.trim()).filter((q) => q !== '')
+    rest.splice(at, 2)
+  }
   if (rest.length > 1 || rest.some((a) => a.startsWith('-'))) {
-    process.stderr.write('usage: node bench/verify.ts [file.jsonl] [--json]\n')
+    process.stderr.write(USAGE)
     return 2
+  }
+  const config = benchConfig()
+  if (only !== undefined) {
+    const unknown = only.filter((q) => !config.questions.includes(q))
+    if (only.length === 0 || unknown.length > 0) {
+      process.stderr.write(`verify: --only takes questions the model is asked: ${config.questions.join(', ')}\n`)
+      return 2
+    }
+    config.questions = config.questions.filter((q) => only.includes(q))
   }
   const path = rest[0] !== undefined ? resolve(cwd, rest[0]) : join(ROOT, 'bench', 'dev.jsonl')
   let text: string
@@ -419,7 +444,7 @@ export function main(argv: readonly string[], cwd: string = process.cwd()): numb
     return 2
   }
   const name = relative(cwd, path) || path
-  const outcome = verifyBench(text, name)
+  const outcome = verifyBench(text, name, config)
   process.stdout.write(json ? JSON.stringify(outcome, null, 2) + '\n' : renderVerifyResult(outcome))
   return outcome.problems.length === 0 ? 0 : 1
 }

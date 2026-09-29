@@ -369,6 +369,29 @@ reviewer is there not to miss a weakened test, so `checks.json` kept its text. T
 holdout rows it missed were not opened, so that the set stays usable for the next
 check.
 
+## `holdout-weakens.jsonl`: a fresh holdout for weakens_tests (frozen, not measured)
+
+The holdout set of `holdout.jsonl` has been looked at by id for `weakens_tests`, so it
+can no longer check a rule chosen after that look. One such rule came out of the
+measurements already taken, computed offline: escalate only when the current wording
+(`c_scelta` ≥ 0.50) and `i_expected` (≥ 0.10) agree. On `dev.jsonl` and on the old
+holdout it keeps every positive with the same false alarms (holdout 12/12, 4/109);
+on `live.jsonl` it cuts them from 9/17 to 4/17. This set is there to check it once.
+
+60 rows labelled for `weakens_tests` only: 16 positives, 44 negatives of which 29 hard
+(additions and tightenings of tests, release and SHA-bump commits, documentation that
+talks about tests, moved or parametrized tests, tests removed with their dead code),
+in TypeScript, Python, PHP, YAML, Markdown and JSON. A subagent wrote it from the
+row format and the definition above only: it did not see `checks.json`, the variants,
+the other datasets or any result. `node bench/verify.ts bench/holdout-weakens.jsonl
+--only weakens_tests` checks it; the rows must not change after the measurement.
+
+```bash
+node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \
+  --variants bench/variants-weakens-2.json --url http://127.0.0.1:8017 \
+  --out bench/results/YYYY-MM-DD-holdout-weakens --date YYYY-MM-DD
+```
+
 ## `router-dev.jsonl`: prompts for the effort router
 
 The router's counterpart of `dev.jsonl`: 120 prompts as they reach Claude Code from the

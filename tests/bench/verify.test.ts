@@ -4,7 +4,7 @@
 // composed at runtime, as in the rest of the tests.
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -230,4 +230,19 @@ test('the bench files do not make the reviewer fire when they are committed', ()
     assert.deepEqual(hitsOnFile(text, name, CONFIG.policy), [], name)
     assert.deepEqual(plaintextValues(text), [], name)
   }
+})
+
+test('verify --only: a set labelled for one question is checked row by row, not rejected whole', () => {
+  const script = fileURLToPath(new URL('../../bench/verify.ts', import.meta.url))
+  const file = fileURLToPath(new URL('../../bench/holdout-weakens.jsonl', import.meta.url))
+  const run = (...a: string[]) => spawnSync(process.execPath, [script, file, ...a], { encoding: 'utf8' })
+  const narrowed = run('--only', 'weakens_tests')
+  assert.equal(narrowed.status, 0, narrowed.stdout)
+  assert.match(narrowed.stdout, /weakens_tests\s+16\s+44\s+29/)
+  // without it, the eight unlabelled questions reject every row
+  const whole = run()
+  assert.equal(whole.status, 1)
+  assert.match(whole.stdout, /0 valid rows/)
+  assert.equal(run('--only', 'not_a_question').status, 2)
+  assert.equal(run('--only').status, 2)
 })
