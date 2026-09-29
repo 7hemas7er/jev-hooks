@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.6.0 — 2026-09-29
+
+`weakens_tests` asks twice before it escalates, measured on a holdout written for it.
+
 ### Changed
 
 - `weakens_tests` escalates only when a second reading agrees: a new question,
