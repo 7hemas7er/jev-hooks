@@ -369,7 +369,7 @@ reviewer is there not to miss a weakened test, so `checks.json` kept its text. T
 holdout rows it missed were not opened, so that the set stays usable for the next
 check.
 
-## `holdout-weakens.jsonl`: a fresh holdout for weakens_tests (frozen, not measured)
+## `holdout-weakens.jsonl`: a fresh holdout for weakens_tests (frozen, measured once)
 
 The holdout set of `holdout.jsonl` has been looked at by id for `weakens_tests`, so it
 can no longer check a rule chosen after that look. One such rule came out of the
@@ -385,6 +385,12 @@ in TypeScript, Python, PHP, YAML, Markdown and JSON. A subagent wrote it from th
 row format and the definition above only: it did not see `checks.json`, the variants,
 the other datasets or any result. `node bench/verify.ts bench/holdout-weakens.jsonl
 --only weakens_tests` checks it; the rows must not change after the measurement.
+
+Measured once on 2026-09-29 (`results/2026-09-29-holdout-weakens`, rizzo on the Spark,
+the variants of `variants-weakens-2.json`). The two-question rule holds on rows no one
+had looked at: it catches the same positives as the current text, 15 of 16, with 4
+false alarms in 44 instead of 10. `i_expected` alone has the best AUROC (0.977) but
+raises 7. The rule is not in `policy.json` yet: it costs one more question per chunk.
 
 ```bash
 node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \
