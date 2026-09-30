@@ -164,7 +164,7 @@ export const DEFAULT_ROUTER = {
 
 export const DEFAULT_CALIBRATION = {
   "version": 1,
-  "_comment": "The first matching profile wins. Key: x_rizzo.fingerprint, then model, then host. A calibrated profile goes AT THE TOP, with match.fingerprint. Per-question entries apply only when the sha256 of the sent text matches. On a question with a fit the decisions stay on the raw value against the policy's threshold, which is shown moved through the fit (calibration.ts), so a fit changes no verdict; an explicit thresholds block in a calibrated profile would replace the policy's value, a project's stricter one included, so the plugin's profiles have none. Read only from the user layer or the plugin, never from the project.",
+  "_comment": "The first matching profile wins. Key: x_rizzo.fingerprint, then model, then host. A calibrated profile goes AT THE TOP, with match.fingerprint. Per-question entries apply only when the sha256 of the sent text matches. On a question with a fit the decisions stay on the raw value against the policy's threshold, which is shown moved through the fit (calibration.ts), so a fit changes no verdict; an explicit thresholds block in a calibrated profile replaces the policy's value, compared on the calibrated scale, except where a project's rule is stricter, and the plugin's profiles have none. Read only from the user layer or the plugin, never from the project.",
   "wide_delta_logit": 1.39,
   "profiles": [
     {

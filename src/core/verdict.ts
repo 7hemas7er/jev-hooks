@@ -91,7 +91,7 @@ export function evaluateRule(
 ): EvaluatedRule | undefined {
   const x = numericValue(v, r.check)
   if (x === undefined) return undefined
-  const thr = ruleThreshold(r.check, r.value, s, hashOk)
+  const thr = ruleThreshold(r, s, hashOk)
   // a policy value on a calibrated question is compared with the raw value it was chosen on
   const raw = decidesOnRaw(r.check, thr.source, s) ? rawValue(v, r.check) : undefined
   const fires = raw !== undefined ? compare(raw, r.op, r.value) : compare(x, r.op, thr.value)

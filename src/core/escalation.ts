@@ -201,7 +201,7 @@ function pointsOf(v: CheckValue): Point[] {
 
 // The value a decision compares, and the threshold it compares it with.
 function onScale(id: string, ctx: EscalationContext, r: Rule, x: { p: number; raw?: number }): { v: number; s: number; shown: number; raw: boolean } {
-  const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+  const t = ruleThreshold(r, ctx.selection, ctx.extra.hashOk)
   const raw = decidesOnRaw(id, t.source, ctx.selection) && x.raw !== undefined && Number.isFinite(x.raw)
   return raw ? { v: x.raw as number, s: r.value, shown: t.value, raw: true } : { v: x.p, s: t.value, shown: t.value, raw: false }
 }
@@ -265,13 +265,13 @@ function deniedHits(ctx: EscalationContext, hits: readonly Hit[], detectors: Rea
     for (const r of rulesOn(ctx.p, id, def)) {
       const dr = deltaOf(r, delta)
       const x = at === undefined ? undefined : onScale(id, ctx, r, at)
-      const shown = x?.shown ?? ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk).value
+      const shown = x?.shown ?? ruleThreshold(r, ctx.selection, ctx.extra.hashOk).value
       const lp = x === undefined ? undefined : clippedLogit(x.v)
       const ls = x === undefined ? 0 : clippedLogit(x.s)
       const safe = lp === undefined
         || (r.op === 'gte' || r.op === 'gt' ? lp < ls - dr - EPS && lp < 0 : lp > ls + dr + EPS && lp > 0)
       if (safe) {
-        const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+        const t = ruleThreshold(r, ctx.selection, ctx.extra.hashOk)
         selection = { threshold: shown, delta: dr, ...(dr > 0 ? { edges: shownBand(id, r.value, t, dr, ctx.selection) } : {}) }
         break
       }
@@ -346,7 +346,7 @@ function questionItems(ctx: EscalationContext, hits: readonly Hit[], detectors: 
         for (const r of rules) {
           const o = onScale(id, ctx, r, point)
           if (Math.abs(clippedLogit(o.v) - clippedLogit(o.s)) > delta + EPS) continue
-          const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+          const t = ruleThreshold(r, ctx.selection, ctx.extra.hashOk)
           inBand.push({ point, s: o.shown, op: r.op, edges: shownBand(id, r.value, t, delta, ctx.selection) })
           break
         }

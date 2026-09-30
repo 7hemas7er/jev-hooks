@@ -13,7 +13,7 @@ import { LOGIT_MAX, clippedLogit, sigmoid } from './numbers.ts'
 import { questionHash } from './systemone.ts'
 import type {
   Calibration, WireQuestion, Identity, CalibrationMode, Policy, Profile, Answer, ProfileSelection, CheckValue, ChunkValue, DerivedValue,
-  CalibrationEntry, Checks, ThresholdScale,
+  CalibrationEntry, Checks, ThresholdScale, Rule,
 } from './types.ts'
 
 export type { CalibrationMode, ProfileSelection } from './types.ts'
@@ -294,11 +294,21 @@ export function profileThreshold(check: string, ruleValue: number, s: ProfileSel
 // question missing from the map is consistent only if the profile has no entry for
 // it: when in doubt the policy applies, which is the value the user wrote. A policy
 // value moves onto the scale of the calibrated values (scaledThreshold).
-export function ruleThreshold(check: string, ruleValue: number, s: ProfileSelection, hashOk?: Readonly<Record<string, boolean>>):
+//
+// The profile comes from the user or the plugin, and it may loosen their rules. A rule
+// of the project is a restriction instead, which nothing but a stricter value may
+// replace: the two are compared on the calibrated scale, where the policy's value has
+// just been moved. On a tie the policy's stays, decided on the raw value it was
+// written for.
+export function ruleThreshold(r: Pick<Rule, 'check' | 'op' | 'value' | 'fromProject'>, s: ProfileSelection, hashOk?: Readonly<Record<string, boolean>>):
   { value: number; source: 'policy' | 'profile' } {
-  const consistent = hashOk && Object.hasOwn(hashOk, check) ? hashOk[check] : entryOf(s.profile, check) === undefined
-  const t = profileThreshold(check, ruleValue, s, consistent)
-  return t.source === 'profile' ? t : { value: scaledThreshold(check, ruleValue, s), source: 'policy' }
+  const consistent = hashOk && Object.hasOwn(hashOk, r.check) ? hashOk[r.check] : entryOf(s.profile, r.check) === undefined
+  const t = profileThreshold(r.check, r.value, s, consistent)
+  const policy = { value: scaledThreshold(r.check, r.value, s), source: 'policy' as const }
+  if (t.source === 'policy') return policy
+  if (!r.fromProject) return t
+  const up = r.op === 'gte' || r.op === 'gt'
+  return (up ? t.value < policy.value : t.value > policy.value) ? t : policy
 }
 
 // ─── Thresholds on the calibrated scale ───────────────────────────────────────

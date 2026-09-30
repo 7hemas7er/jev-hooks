@@ -81,7 +81,8 @@ test('Spark profile: calibrated per question from its fit, no thresholds of its 
   assert.match(spark.match.fingerprint ?? '', /^[0-9a-f]{64}$/)
   assert.equal(spark.calibrated, true)
   assert.equal(spark.noul, undefined, 'a Platt per question, no block for the type')
-  // the policy's thresholds move with their question: an explicit threshold would replace them
+  // the policy's thresholds move with their question: an explicit threshold would replace
+  // the plugin's and the user's
   assert.equal(spark.thresholds, undefined)
   const thresholds: Record<string, number> = {}
   for (const l of p.lanes) for (const r of l.rules) thresholds[r.check] = r.value
@@ -584,14 +585,14 @@ test('project: a stricter threshold and a new rule apply; without "action" the b
     { name: 'NITS', rules: [{ check: 'adds_tests', op: 'lte', value: 0.6 }, { check: 'hardcoded_secret', op: 'gte', value: SECRET_THRESHOLD / 2 }] },
   ] }) })))
   // a new rule in BLOCK only adds a way to fire
-  assert.deepEqual(rule(r.policy, 'BLOCK', 'hardcoded_secret'), [{ check: 'hardcoded_secret', op: 'gte', value: 0.5 }])
+  assert.deepEqual(rule(r.policy, 'BLOCK', 'hardcoded_secret'), [{ check: 'hardcoded_secret', op: 'gte', value: 0.5, fromProject: true }])
   assert.equal(rule(r.policy, 'BLOCK', 'debug_leftovers')?.[0].value, 0.99)
   // lte with a higher value is stricter; without unless it also fires on docs-only
   // diffs, so it is stricter still
   assert.ok(0.6 > TEST_THRESHOLD)
-  assert.deepEqual(rule(r.policy, 'NITS', 'adds_tests'), [{ check: 'adds_tests', op: 'lte', value: 0.6 }])
+  assert.deepEqual(rule(r.policy, 'NITS', 'adds_tests'), [{ check: 'adds_tests', op: 'lte', value: 0.6, fromProject: true }])
   // the lower threshold keeps the escalation of the rule it replaces
-  assert.deepEqual(rule(r.policy, 'NITS', 'hardcoded_secret'), [{ check: 'hardcoded_secret', op: 'gte', value: SECRET_THRESHOLD / 2, action: 'escalation' }])
+  assert.deepEqual(rule(r.policy, 'NITS', 'hardcoded_secret'), [{ check: 'hardcoded_secret', op: 'gte', value: SECRET_THRESHOLD / 2, action: 'escalation', fromProject: true }])
   assert.deepEqual(r.warnings, [])
 })
 
@@ -609,7 +610,8 @@ test('project: "action" can be added, not removed', () => {
   const same = valueOf(composeConfig(layers({ project: project({ lanes: [{ name: 'NITS', rules: [
     { check: 'debug_leftovers', op: 'gte', value: POLICY.lanes[2].rules[6].value, action: 'escalation' },
   ] }] }) })))
-  assert.deepEqual(rule(same.policy, 'NITS', 'debug_leftovers'), [{ check: 'debug_leftovers', op: 'gte', value: POLICY.lanes[2].rules[6].value, action: 'escalation' }])
+  // restated with the base's value: marked, the project asked for at least that
+  assert.deepEqual(rule(same.policy, 'NITS', 'debug_leftovers'), [{ check: 'debug_leftovers', op: 'gte', value: POLICY.lanes[2].rules[6].value, action: 'escalation', fromProject: true }])
   assert.deepEqual(same.warnings, [])
 })
 
@@ -988,7 +990,7 @@ test('project policy.json: rules on replaced checks are translated, new detector
   } })))
   assert.deepEqual(r.warnings, [])
   assert.deepEqual(rule(r.policy, 'BLOCK', 'project_check_16'), [
-    { check: 'project_check_16', op: 'gte', value: 0.9, unless: [{ check: 'project_check_16', op: 'lt', value: 0.1 }] },
+    { check: 'project_check_16', op: 'gte', value: 0.9, unless: [{ check: 'project_check_16', op: 'lt', value: 0.1 }], fromProject: true },
   ])
   const names = r.policy.detectors.filter((d) => d.fromProject).map((d) => [d.name, d.check])
   // the position is the one in the file's list: the second is an existing detector

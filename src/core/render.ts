@@ -709,12 +709,15 @@ export function renderExplanation(
       ruleCount++
       const action = r.action === 'escalation' ? '  → escalation to Claude' : ''
       lines.push(`  ${pad(lane.name, wc)}  ${r.check} ${SYMBOL[r.op]} ${formatNumber(r.value, 2)}${unless}${action}`)
-      const thr = ruleThreshold(id, r.value, selection, hashOk)
+      const thr = ruleThreshold(r, selection, hashOk)
       let source = thr.source === 'profile' ? `profile ${selection.profile.name} (${c.sources.calibration ?? 'calibration.json'})` : policySource
       const th = ps?.profile.thresholds
       if (ps && thr.source === 'policy' && th && Object.hasOwn(th, id)) {
         if (ps.mode === 'server') source += ` · threshold of profile ${ps.profile.name} not used: server-side calibration`
         else if (!ps.profile.calibrated) source += ` · threshold of profile ${ps.profile.name} not used: uncalibrated profile`
+        else if (r.fromProject && ruleThreshold({ ...r, fromProject: false }, selection, hashOk).source === 'profile') {
+          source += ` · threshold of profile ${ps.profile.name} not used: the project's rule is stricter`
+        }
         else source += ` · threshold of profile ${ps.profile.name} ignored: question changed after the calibration fit`
       }
       const space = ' '.repeat(wc + 4)

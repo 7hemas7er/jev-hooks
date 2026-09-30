@@ -4,7 +4,7 @@
 |---|---|
 | `checks.json` | The questions: id, label, type, the exact text sent to the model, which state it sees, whether it is critical |
 | `policy.json` | Lanes and their order, rules and thresholds, detectors and floors, escalation behaviour, chunk and time limits |
-| `calibration.json` | Per-backend profiles (matched by fingerprint, model or host): a Platt scaling per question, temperatures, the uncertainty band. On a fitted question the decision stays on the raw value against the policy's threshold, and the threshold is shown moved through the fit, so a fit changes no verdict; an explicit threshold in a calibrated profile would replace the policy's value, a project's stricter one included |
+| `calibration.json` | Per-backend profiles (matched by fingerprint, model or host): a Platt scaling per question, temperatures, the uncertainty band. On a fitted question the decision stays on the raw value against the policy's threshold, and the threshold is shown moved through the fit, so a fit changes no verdict; an explicit threshold in a calibrated profile replaces the policy's value, except where a project's rule is stricter |
 | `router.json` | The effort router's questions, the effort each answer leads to, its timing and its cache guard |
 
 Every key starting with `_` is a note for humans: the defaults explain each threshold

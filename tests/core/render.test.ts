@@ -334,6 +334,12 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
   const uncalibrated = renderExplanation('hardcoded_secret', c, { profile: { ...calibrated, calibrated: false }, mode: 'client', origin: 'x' })
   assert.match(uncalibrated, /threshold of profile spark-calibrated not used: uncalibrated profile/)
 
+  // a project that lowered the rule to 0.50: σ(0.29 · logit(0.50) − 0.4) = 0.40 is
+  // stricter than the profile's 0.62, which does not loosen it
+  const tightened = { ...c, policy: { ...c.policy, lanes: c.policy.lanes.map((l) => ({ ...l, rules: l.rules.map((r) => (r.check === 'hardcoded_secret' ? { ...r, value: 0.5, fromProject: true } : r)) })) } }
+  assert.match(renderExplanation('hardcoded_secret', tightened, { profile: calibrated, mode: 'client', origin: 'x' }),
+    /effective threshold 0\.40 · source: policy .* threshold of profile spark-calibrated not used: the project's rule is stricter/)
+
   const computed = renderExplanation('docs_only', c, null)
   assert.match(computed, new RegExp(`NITS\\s+adds_tests ≤ ${thr('adds_tests')} unless docs_only ≥ 0\\.50 {2}\\(here as an unless condition\\)`))
   assert.match(computed, /calibrator: none: value computed by the code/)

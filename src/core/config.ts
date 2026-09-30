@@ -1734,7 +1734,7 @@ export function overlayPolicy(
             .filter(({ b }) => b.check === parsed.check && direction(b.op) === direction(parsed.op))
           if (same.length === 0) {
             // a new rule only adds a way to fire
-            lane.rules.push(parsed)
+            lane.rules.push({ ...parsed, fromProject: true })
             return
           }
           // A rule that does not write "action" tightens the threshold and keeps the base's
@@ -1744,11 +1744,12 @@ export function overlayPolicy(
           const g = raw[j]
           const explicit = isObject(g) && g.action !== undefined
           let applied = false
+          // a rule restated with the base's value is marked too: the project asked for
+          // at least that value, and a looser calibrated threshold must not replace it
           for (const { b, idx } of same) {
             const r = !explicit && b.action !== undefined ? { ...parsed, action: b.action } : parsed
-            if (canonical(b as unknown as Json) === canonical(r as unknown as Json)) applied = true
-            else if (atLeastAsStrict(r, b)) {
-              lane.rules[idx] = r
+            if (canonical(b as unknown as Json) === canonical({ ...r, fromProject: b.fromProject } as unknown as Json) || atLeastAsStrict(r, b)) {
+              lane.rules[idx] = { ...r, fromProject: true }
               applied = true
             }
           }

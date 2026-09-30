@@ -13,7 +13,7 @@ import { canonical } from '../../src/core/canonical.ts'
 import { validateCalibration, validateChecks, validatePolicy } from '../../src/core/config.ts'
 import { formatNumber } from '../../src/core/numbers.ts'
 import { questionHash } from '../../src/core/systemone.ts'
-import type { Calibration, WireQuestion, Result, Identity, Json, Profile, Answer, DerivedValue, ProfileSelection, Op, CheckValue } from '../../src/core/types.ts'
+import type { Calibration, WireQuestion, Result, Identity, Json, Profile, Answer, DerivedValue, ProfileSelection, Op, CheckValue, Rule } from '../../src/core/types.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const json = (rel: string): unknown => JSON.parse(readFileSync(join(root, rel), 'utf8'))
@@ -47,6 +47,8 @@ const JEV: Identity = { host: 'api.typesafe.ai', model: 'jev-1.13.0', family: 't
 const OTHER: Identity = { host: 'llm.example.org', model: 'something-7b', family: 'other' }
 
 const noul = (p: number): Answer => ({ type: 'noul', noul: p })
+const gte = (check: string, value: number): Rule => ({ check, op: 'gte', value })
+const pick = (e: { fires: boolean; source: string; onRaw: boolean } | undefined): unknown => e && { fires: e.fires, source: e.source, onRaw: e.onRaw }
 const pNoul = (r: Answer): number => {
   assert.equal(r.type, 'noul')
   return r.type === 'noul' ? r.noul : Number.NaN
@@ -422,18 +424,48 @@ test('per_question with a different sha: ignored, with the note, and the policy 
   const questions = Object.fromEntries(['hardcoded_secret', 'injection_risk'].map((id) => [id, wire(id)]))
   const hashOk = consistentHashes(questions, s)
   assert.deepEqual(hashOk, { hardcoded_secret: false, injection_risk: true })
-  assert.deepEqual(ruleThreshold('hardcoded_secret', 0.7, s, hashOk), { value: 0.7, source: 'policy' })
+  assert.deepEqual(ruleThreshold(gte('hardcoded_secret', 0.7), s, hashOk), { value: 0.7, source: 'policy' })
   // matching sha: the profile's threshold replaces the rule's value
   const good = chooseProfile(withCalibrated(CALIBRATED), RIZZO, POLICY.band)
   const h2 = consistentHashes(questions, good)
   assert.deepEqual(h2, { hardcoded_secret: true, injection_risk: true })
-  assert.deepEqual(ruleThreshold('hardcoded_secret', 0.7, good, h2), { value: 0.62, source: 'profile' })
+  assert.deepEqual(ruleThreshold(gte('hardcoded_secret', 0.7), good, h2), { value: 0.62, source: 'profile' })
   // a check without a threshold in the profile stays on the policy
-  assert.deepEqual(ruleThreshold('injection_risk', 0.7, good, h2), { value: 0.7, source: 'policy' })
+  assert.deepEqual(ruleThreshold(gte('injection_risk', 0.7), good, h2), { value: 0.7, source: 'policy' })
   // missing map: consistent only if the profile has no entry for that question
-  assert.deepEqual(ruleThreshold('hardcoded_secret', 0.7, good), { value: 0.7, source: 'policy' })
+  assert.deepEqual(ruleThreshold(gte('hardcoded_secret', 0.7), good), { value: 0.7, source: 'policy' })
   const withoutEntry = chooseProfile(withCalibrated({ ...CALIBRATED, per_question: undefined }), RIZZO, POLICY.band)
-  assert.deepEqual(ruleThreshold('hardcoded_secret', 0.7, withoutEntry), { value: 0.62, source: 'profile' })
+  assert.deepEqual(ruleThreshold(gte('hardcoded_secret', 0.7), withoutEntry), { value: 0.62, source: 'profile' })
+})
+
+test('a rule of the project gives way to a profile threshold only where the profile is stricter', () => {
+  const good = chooseProfile(withCalibrated(CALIBRATED), RIZZO, POLICY.band)
+  const h = consistentHashes({ hardcoded_secret: wire('hardcoded_secret') }, good)
+  const project = (op: Op, value: number): Rule => ({ check: 'hardcoded_secret', op, value, fromProject: true })
+  // the same 0.5 from the user or the plugin: the profile's 0.62 replaces it
+  assert.deepEqual(ruleThreshold(gte('hardcoded_secret', 0.5), good, h), { value: 0.62, source: 'profile' })
+  // from the project it is a restriction, and 0.62 would loosen it
+  assert.deepEqual(ruleThreshold(project('gte', 0.5), good, h), { value: 0.5, source: 'policy' })
+  // a stricter profile still wins; on a tie the project's value stays
+  assert.deepEqual(ruleThreshold(project('gte', 0.7), good, h), { value: 0.62, source: 'profile' })
+  assert.deepEqual(ruleThreshold(project('gte', 0.62), good, h), { value: 0.62, source: 'policy' })
+  // with lte a higher value is the stricter one
+  assert.deepEqual(ruleThreshold(project('lte', 0.7), good, h), { value: 0.7, source: 'policy' })
+  assert.deepEqual(ruleThreshold(project('lte', 0.5), good, h), { value: 0.62, source: 'profile' })
+
+  // The two are compared where they both are, on the calibrated scale: the project's
+  // raw 0.9 becomes σ(0.29 · logit(0.9) − 0.4) = 0.56, stricter than 0.62, and the
+  // decision stays on the raw value. A raw 0.95 is calibrated to 0.61: the profile's
+  // threshold would have let it through.
+  const s = withThresholdScales(good, { hardcoded_secret: wire('hardcoded_secret') }, CHECKS)
+  const t = ruleThreshold(project('gte', 0.9), s, h)
+  assert.equal(t.source, 'policy')
+  assert.equal(formatNumber(t.value, 2), '0.56')
+  const cal = pNoul(calibrate('hardcoded_secret', wire('hardcoded_secret'), noul(0.95), s).response)
+  assert.ok(cal < 0.62, String(cal))
+  const values: Record<string, CheckValue> = { hardcoded_secret: { value: cal, raw: 0.95 } }
+  assert.deepEqual(pick(evaluateRule(project('gte', 0.9), values, s, h)), { fires: true, source: 'policy', onRaw: true })
+  assert.deepEqual(pick(evaluateRule(gte('hardcoded_secret', 0.9), values, s, h)), { fires: false, source: 'profile', onRaw: false })
 })
 
 test('profile thresholds only if calibrated', () => {
@@ -536,13 +568,13 @@ test('a threshold keeps its value where nothing transforms the values: server ca
   const identity = fitted({ noul: undefined, per_question: { touches_auth: { sha256: questionHash(wire('touches_auth')), a: 1, b: 0 } } })
   const s = withThresholdScales(identity, QUESTIONS, CHECKS)
   assert.deepEqual(s.scales, {})
-  assert.equal(ruleThreshold('touches_auth', 0.7, s).value, 0.7)
+  assert.equal(ruleThreshold(gte('touches_auth', 0.7), s).value, 0.7)
 })
 
 test('an explicit threshold of a calibrated profile still replaces the value; an unless condition moves with its check', () => {
   const s = withThresholdScales(fitted({ thresholds: { touches_auth: 0.5 } }), QUESTIONS, CHECKS)
   const hashOk = consistentHashes(QUESTIONS, s)
-  assert.deepEqual(ruleThreshold('touches_auth', 0.7, s, hashOk), { value: 0.5, source: 'profile' })
+  assert.deepEqual(ruleThreshold(gte('touches_auth', 0.7), s, hashOk), { value: 0.5, source: 'profile' })
   // weakens_tests has no entry here; its condition on weakens_expected (< 0.10 raw) is
   // evaluated on weakens_expected's calibrated value
   const rule = { check: 'weakens_tests', op: 'gte' as Op, value: 0.5, unless: [{ check: 'weakens_expected', op: 'lt' as Op, value: 0.1 }] }

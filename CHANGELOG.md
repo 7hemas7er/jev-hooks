@@ -5,6 +5,16 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- An explicit threshold in a calibrated profile no longer loosens a project's rule. It
+  replaced the value of every rule on its question, so a `.jev-hooks/policy.json` that
+  lowered `hardcoded_secret` to 0.3 gave way to a profile's 0.62. A rule the project
+  adds, tightens or restates is now marked, and the profile's threshold replaces it only
+  where it is stricter, compared on the calibrated scale; otherwise the project's value
+  stays and is decided on the raw value, and `jev-review explain` says why. No plugin
+  profile has thresholds of its own, so only a user's `calibration.json` could meet it.
+
 ## 0.10.0 — 2026-09-30
 
 The Spark's answers are calibrated per question, with every verdict as before: the

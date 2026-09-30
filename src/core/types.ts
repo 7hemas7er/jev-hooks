@@ -184,12 +184,16 @@ export interface Condition { check: string; op: Op; value: number }
 
 // unless: the rule does not fire when any of these conditions holds. policy.json may
 // write one object or a list; the reader always gives a list of at least one.
+// fromProject: .jev-hooks/policy.json added the rule, tightened it or restated it. It
+// is a restriction, and a calibrated profile's threshold replaces its value only where
+// it is stricter (calibration.ts, ruleThreshold).
 export interface Rule {
   check: string
   op: Op
   value: number
   unless?: Condition[]
   action?: RuleAction
+  fromProject?: boolean
 }
 
 export interface Lane {
