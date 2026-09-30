@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.10.0 — 2026-09-30
+
+The Spark's answers are calibrated per question, with every verdict as before: the
+numbers shown now mean what they say. The bench gains the commits the live reviewer
+saw, labelled for every question.
+
 ### Changed
 
 - The Spark's profile (`spark-bf16-2026-09`) is calibrated: a Platt scaling per question,
