@@ -37,7 +37,8 @@ you press Enter
   settings), unless your account already has them through Claude Code's own rollout.
   They never load under `--bare`, `disableAllHooks` or `allowManagedHooksOnly`.
   Function hooks are early access: their API can change between Claude Code releases
-  without notice, and the router was written and tested against 2.1.283.
+  without notice; the router was written against 2.1.283 and checked live on 2.1.283
+  and 2.1.284 ([Limitations](limitations.md)).
 - **Opus 5.5, Fable 5.1 or Sonnet 5.5, and the per-turn-control beta on your account.** Only with
   both does a change of effort keep the prompt cache. Without the beta, or after Claude
   Code drops it until `/clear` or `/compact`, every change of effort empties the cache

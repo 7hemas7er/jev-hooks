@@ -20,12 +20,14 @@ for. A rename does not need the reasoning a design question needs.
 > **Status: public preview.** The commit reviewer, the `/jev-review` and `/jev-status`
 > skills and the `jev-review` CLI work. The
 > effort router is built, opt-in and early access: it runs on Claude Code's function
-> hooks, and one live run on Claude Code 2.1.283 has shown the effort it sets reaching
-> the API request and the prompt cache surviving the change (see [Limitations](docs/limitations.md)).
+> hooks, and live runs on Claude Code 2.1.283 and 2.1.284, on Opus 5.5, Fable 5.1 and
+> Sonnet 5.5, have shown the effort it sets reaching the API request and the prompt
+> cache surviving the change (see [Limitations](docs/limitations.md)).
 > The GitHub Action is built: a CI job runs it on GitHub's runner on a diff, tests
 > against a fake GitHub API cover its two-phase flow, and that flow has run on real
-> pull requests in a test repository, with a fake backend (see
-> [GitHub Action](docs/action.md#github-action)). About 890 offline tests cover all of it. The reviewer's thresholds come from a small synthetic bench ([measured bench](docs/evaluation.md#the-measured-bench))
+> pull requests in a test repository, a fork's included, with rizzo reached over the
+> tailnet and a required check from a dedicated App (see
+> [GitHub Action](docs/action.md#github-action)). About 900 offline tests cover all of it. The reviewer's thresholds come from a small synthetic bench ([measured bench](docs/evaluation.md#the-measured-bench))
 > and the router's are not fitted: treat verdicts as a second opinion, not as a gate.
 
 ## Why typed decisions
@@ -63,7 +65,7 @@ Three question types, as in Jev:
 | Question bench and policy simulator | **works** | `bench/`, `scripts/measure-questions.ts`, `scripts/simulate-policy.ts`; see [The measured bench](docs/evaluation.md#the-measured-bench) |
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](docs/how-it-works.md#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
-| Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; one live run so far | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](docs/router.md#effort-router-opt-in) |
+| Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; checked live on Opus 5.5, Fable 5.1 and Sonnet 5.5 | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](docs/router.md#effort-router-opt-in) |
 | GitHub Action (`action.yml`) | built; run on real pull requests, a fork's included: rizzo over the tailnet, a required check from a dedicated App that a same-named job cannot imitate | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](docs/action.md#github-action) |
 
 ## How it works

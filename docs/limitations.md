@@ -23,11 +23,14 @@
   the effort alone, and its own request can hold a review back by a fraction of a
   second.
 - **The router rests on early-access APIs.** Function hooks can change between Claude
-  Code releases without notice; the router was written and tested against 2.1.283, in
-  Claude Code's own test kit and on a fake engine under Node.
-- **One live run so far** (2026-09-28, Claude Code 2.1.283, headless `claude -p` on Opus
+  Code releases without notice; the router was written against 2.1.283 and checked
+  live on 2.1.283 and 2.1.284. Claude Code's own test kit and a fake engine under Node
+  test it offline, and a weekly job runs the kit and the type check against the pinned
+  and the latest release.
+- **What has run live**, in order.
+  The first run (2026-09-28, Claude Code 2.1.283, headless `claude -p` on Opus
   5.5 with the session at `high`, a copy of the plugin that also classifies the `sdk`
-  origin, rizzo through Tailscale). A logging proxy in front of the API showed
+  origin, rizzo through Tailscale): a logging proxy in front of the API showed
   `output_config.effort` at `low` on both requests of a routed turn, and at `high`
   with `JEV_HOOKS_ROUTER=0`. After a turn at `low`, the next turn at `high` read
   90,727 tokens from the prompt cache, the whole previous request, with the
@@ -38,14 +41,6 @@
   `timeout_ms` and left that turn as it was. `CLAUDE_EFFORT` in a Bash command shows
   the session's effort, not the one the router sets for a request. Later sessions
   checked the `claude-fable-5-1` id and a prompt typed in the interactive composer.
-  On 2.1.284 (2026-09-29), Sonnet 5.5 in two arms of two headless turns each, without
-  MCP servers, against a fake backend: with the router the first request carried
-  effort `low` and the second `high`, each as a `role: "system"` message in the
-  conversation under the per-turn-control beta, and `system/init` reported
-  `per_turn_effort_active: true`; without it both stayed at `high`. The second turn
-  read the same 27,547 cached tokens in both arms, so the change of effort cost
-  nothing in cache. Neither arm read the whole previous request back: a new
-  `claude -p --continue` process does not rebuild the prefix byte for byte.
   On 2.1.284 a copy with a broken module (`on('turn.stepX', …)`) was refused at load
   ("hooks module … failed to load" in the debug log) while the commit hook of the same
   plugin still fired and denied a commit. Esc pressed while the router waited for a
@@ -58,6 +53,14 @@
   prompt got `router: key rejected by the backend (HTTP 401)`, although the key file
   held the right key. The dialog cannot empty a sensitive value once saved (an empty
   field means "unchanged", on 2.1.284): to change `router_api_key`, type the new one.
+  Last, on 2.1.284 (2026-09-29), Sonnet 5.5 in two arms of two headless turns each,
+  without MCP servers, against a fake backend: with the router the first request
+  carried effort `low` and the second `high`, each as a `role: "system"` message in the
+  conversation under the per-turn-control beta, and `system/init` reported
+  `per_turn_effort_active: true`; without it both stayed at `high`. The second turn
+  read the same 27,547 cached tokens in both arms, so the change of effort cost
+  nothing in cache. Neither arm read the whole previous request back: a new
+  `claude -p --continue` process does not rebuild the prefix byte for byte.
 - **The beta is invisible.** The plugin cannot tell whether the per-turn-control beta
   is active. The cache guard notices a cleared cache only after the fact: two turns
   that each paid for the whole context again.
