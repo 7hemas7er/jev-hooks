@@ -164,7 +164,7 @@ export const DEFAULT_ROUTER = {
 
 export const DEFAULT_CALIBRATION = {
   "version": 1,
-  "_comment": "The first matching profile wins. Key: x_rizzo.fingerprint, then model, then host. A calibrated profile goes AT THE TOP, with match.fingerprint. Per-question entries apply only when the sha256 of the sent text matches. Read only from the user layer or the plugin, never from the project.",
+  "_comment": "The first matching profile wins. Key: x_rizzo.fingerprint, then model, then host. A calibrated profile goes AT THE TOP, with match.fingerprint. Per-question entries apply only when the sha256 of the sent text matches. On a question with a fit the decisions stay on the raw value against the policy's threshold, which is shown moved through the fit (calibration.ts), so a fit changes no verdict; an explicit thresholds block in a calibrated profile would replace the policy's value, a project's stricter one included, so the plugin's profiles have none. Read only from the user layer or the plugin, never from the project.",
   "wide_delta_logit": 1.39,
   "profiles": [
     {
@@ -172,7 +172,7 @@ export const DEFAULT_CALIBRATION = {
       "match": {
         "fingerprint": "64219e54c725bb176157e0d2905bd3133401ee592ac4504660e5a8bf7310737a"
       },
-      "calibrated": false,
+      "calibrated": true,
       "choice": {
         "t": 3
       },
@@ -184,41 +184,59 @@ export const DEFAULT_CALIBRATION = {
           "sha256": "8fcf8b054f63808c454c265895289150720668f8095d443c65fd3ee9999154a1"
         },
         "injection_risk": {
-          "sha256": "f183376890c7c4e48a161454d6d7aa177f55af5a0aa6615a73889f208c0295fa"
+          "sha256": "f183376890c7c4e48a161454d6d7aa177f55af5a0aa6615a73889f208c0295fa",
+          "a": 0.5244,
+          "b": -3.6716,
+          "n": 118,
+          "errors": 8
         },
         "touches_auth": {
-          "sha256": "47bcb633948180f4f5e13da51dc1125d0c83c7e705f8c0bea84efcabd6ec1b7a"
+          "sha256": "47bcb633948180f4f5e13da51dc1125d0c83c7e705f8c0bea84efcabd6ec1b7a",
+          "a": 0.3489,
+          "b": -1.0507,
+          "n": 118,
+          "errors": 10
         },
         "weakens_tests": {
-          "sha256": "1feb3ec470b86f0ec13998002f90ba4736dae11ba8b7b9d01e63a7f6bfb0af12"
+          "sha256": "1feb3ec470b86f0ec13998002f90ba4736dae11ba8b7b9d01e63a7f6bfb0af12",
+          "a": 0.5187,
+          "b": -2.5736,
+          "n": 118,
+          "errors": 9
         },
         "weakens_expected": {
           "sha256": "24071ad11d105afcf1310ee0f1e0f2421cf78d54a2d0631bf2dc0a2cb93e528a"
         },
         "adds_tests": {
-          "sha256": "e637c7a92d249a84aa22fdc41f70e0039e4ccd7af7e658b5c54e6392389f4f63"
+          "sha256": "e637c7a92d249a84aa22fdc41f70e0039e4ccd7af7e658b5c54e6392389f4f63",
+          "a": 0.5094,
+          "b": 1.0923,
+          "n": 118,
+          "errors": 41
         },
         "breaks_api": {
-          "sha256": "424250f372401bb7afe2851eac8c499cea5f610a993469b9381427e98e678c84"
+          "sha256": "424250f372401bb7afe2851eac8c499cea5f610a993469b9381427e98e678c84",
+          "a": 0.6017,
+          "b": -1.9886,
+          "n": 118,
+          "errors": 12
         },
         "data_migration": {
-          "sha256": "b6ce1888d300422fcce9d8432a3bf698d330dfb7892df3a30d621258584ecbbe"
+          "sha256": "b6ce1888d300422fcce9d8432a3bf698d330dfb7892df3a30d621258584ecbbe",
+          "a": 0.5217,
+          "b": -1.9818,
+          "n": 118,
+          "errors": 7
         },
         "debug_leftovers": {
-          "sha256": "ffde6e476c0ecee5896c8acc96b4efb6a47b3a607b3539c3d2f3d9121b866b26"
+          "sha256": "ffde6e476c0ecee5896c8acc96b4efb6a47b3a607b3539c3d2f3d9121b866b26",
+          "a": 0.6546,
+          "b": -1.553,
+          "n": 118,
+          "errors": 8
         }
       },
-      "thresholds": {
-        "hardcoded_secret": 0.1,
-        "injection_risk": 0.99,
-        "touches_auth": 0.7,
-        "weakens_tests": 0.5,
-        "adds_tests": 0.3,
-        "breaks_api": 0.9,
-        "data_migration": 0.2,
-        "debug_leftovers": 0.4
-      },
-      "note": "The Spark measured on the bench on 2026-09-26 (rizzo-flow, Spark-X2.5-4B BF16): dev set bench/results/2026-09-26-dev-checks (118 diffs) and holdout set 2026-09-26-holdout (121 new diffs), with the checks.json questions tied by per_question.sha256. No transformation of nouls and of choices with a value: the thresholds are chosen on the raw p, to stay within about 3% false alarms on the dev set, and checked on the holdout set (TPR and FPR of each in the _why of its rule in policy.json, which has the same values). calibrated stays false: no Platt scaling has been fitted, so the thresholds of policy.json apply and these document them. Temperature 3 for choice and score as in rizzo-provisional: the bench did not measure them. Also valid for a router instance with the same GGUF and the same flags, which has the same fingerprint."
+      "note": "The Spark measured on the bench on 2026-09-26 (rizzo-flow, Spark-X2.5-4B BF16): dev set bench/results/2026-09-26-dev-checks (118 diffs) and holdout set 2026-09-26-holdout (121 new diffs), with the checks.json questions tied by per_question.sha256. Calibrated on 2026-09-30 by scripts/fit-calibration.ts (bench/results/2026-09-30-calibration): a Platt per question fitted on the dev set and adopted where a > 0 and it lowers the holdout's log-loss, for seven questions. hardcoded_secret keeps its raw p (the fit made the holdout worse), weakens_expected was not measured on its own labels, and description_matches does not order its labels. The policy's thresholds stay those chosen on the raw p (the _why of each rule) and the decisions stay on the raw value, so every verdict is the raw scale's; what is shown, the value and the threshold moved through the fit, now means what it says, for a mix of problems like the bench's. Temperature 3 for choice and score as in rizzo-provisional: the bench did not measure them. Also valid for a router instance with the same GGUF and the same flags, which has the same fingerprint."
     },
     {
       "name": "rizzo-provisional",

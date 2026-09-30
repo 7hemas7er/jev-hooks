@@ -165,37 +165,66 @@ you that the thresholds no longer apply to that question until you measure again
   instead of 9, 151 of 257 steps saved instead of 142).
 
 All on rizzo-flow serving Spark-X2.5-4B BF16 on a DGX Spark, profile
-`spark-bf16-2026-09`, uncalibrated, except one comparison:
+`spark-bf16-2026-09`, on the raw p (the calibration below came later), except one
+comparison:
 
 - **CLM-8B** on the reviewer's dev set and the router's dev set
   (`2026-09-29-clm-*`), with the same 44 wordings and 7 router questions: it separates
   far worse than rizzo, and two review questions point the wrong way. No text or
   threshold was chosen on it, and the holdout sets were not used.
 
-## Calibration (not done yet)
+## Calibration
 
-Every profile in `config/calibration.json` is uncalibrated today: the probabilities are
-used as they come, and the thresholds were chosen on them. The fit needs data the
-bench does not have in quantity:
+The Spark's profile (`spark-bf16-2026-09`) is calibrated since 2026-09-30:
+`scripts/fit-calibration.ts` fitted a Platt scaling per question,
+p′ = σ(a · logit(p) + b), on the dev measurement (`2026-09-26-dev-checks`, 118 diffs)
+and adopted it where it lowers the log-loss of the holdout measurement
+(`2026-09-26-holdout`, 121 diffs the fit never saw). Report and entries:
+`bench/results/2026-09-30-calibration`.
 
-- **Source**: the hook's log (`log.jsonl` in the plugin's data directory). Each review
-  records raw and calibrated values, the questions' hashes, the backend's fingerprint,
-  the plugin version, and later whether the commit happened after an escalation (`commit_done`). It never
-  records a diff, a title, a description or a key.
-- **Fit**: Platt scaling per yes/no question and temperature for choices and scores,
-  with at least 50 to 100 labelled rows and 10 errors per unit; otherwise one fit per
-  question type. The result is a profile with `match.fingerprint` and the questions'
-  hashes.
-- **Band**: the width of the escalation band around a threshold (`delta_logit`) is
-  chosen on dev, keeping escalations low under a limit on missed problems for the
-  critical checks.
+| Question | a | b | Log-loss on the holdout, raw → calibrated | |
+|---|--:|--:|---|---|
+| `injection_risk` | 0.52 | −3.67 | 0.657 → 0.124 | adopted |
+| `breaks_api` | 0.60 | −1.99 | 0.410 → 0.221 | adopted |
+| `adds_tests` (missing tests) | 0.51 | 1.09 | 0.429 → 0.328 | adopted |
+| `touches_auth` | 0.35 | −1.05 | 0.237 → 0.160 | adopted |
+| `data_migration` | 0.52 | −1.98 | 0.152 → 0.066 | adopted |
+| `weakens_tests` | 0.52 | −2.57 | 0.144 → 0.096 | adopted |
+| `debug_leftovers` | 0.65 | −1.55 | 0.132 → 0.104 | adopted |
+| `hardcoded_secret` | | | 0.115 → 0.131 | kept raw: worse on the holdout |
+| `description_matches` | | | | kept raw: a ≤ 0, it does not order its labels |
+
+`weakens_expected` keeps its raw p too: the dev measurement has no answers of its own for
+it. Every slope is below 1: rizzo is overconfident, and the fit pulls its 0.99s down.
+
+- **The verdicts do not change.** The thresholds in `policy.json` stay those chosen on
+  the raw p, and on a calibrated question every decision is still taken on the raw
+  value: the rules, the `unless` conditions, the band and the disagreement with a
+  detector (`decidesOnRaw` in `src/core/calibration.ts`). This holds for the plugin's
+  rules, a user's and a project's: a band of δ in raw logit would be δ·a on the
+  calibrated scale, and the 0.5 of the disagreement test would move, so comparing the
+  calibrated values would not do. A test replays both sets diff by diff, with the
+  plugin's policy and with one that has bands and disagreement on the fitted questions
+  (`tests/bench/simulate.test.ts`): same lane, rules and escalation items. What changes
+  is what is shown: the calibrated value, next to the threshold and band moved through
+  the same fit. `injection_risk`'s 0.99 is shown as 0.22, `touches_auth`'s 0.70 as
+  0.32. Choosing thresholds on the calibrated scale is a decision of its own, for
+  later.
+- **A bench-like mix.** 14% of the dev answers are positives; real commits have far
+  fewer problems, so on them a calibrated p reads high.
+- **Only this backend.** The other profiles keep the raw p. A new quantization or
+  llama.cpp build changes the fingerprint and falls back to `rizzo-provisional`.
 - **Redo** after any change of question text, quantization, llama.cpp release or state
-  shape.
+  shape: measure dev and holdout again, then
+  `node scripts/fit-calibration.ts --fit <dev dir> --check <holdout dir> --out <dir>`
+  and copy the entries of its `profile.json` into the profile.
 
-A first attempt (2026-09-29) joined the hook's log with this repo's history: 44 commits
-the reviewer saw in full, labelled for the nine questions in
-`bench/live-reviews.jsonl`. It holds at most two positives per question, so no fit was
-made. What it does show is how often the current thresholds raise a false alarm on real
+The hook's log (`log.jsonl` in the plugin's data directory) records raw and calibrated
+values, the questions' hashes, the backend's fingerprint and the plugin version, never a
+diff, a title, a description or a key: labelled, it is the other source a fit can use.
+A first attempt (2026-09-29) joined it with this repo's history: 44 commits the reviewer
+saw in full, labelled for the nine questions in `bench/live-reviews.jsonl`. It holds at
+most two positives per question, too few for a fit. What it does show is how often the current thresholds raise a false alarm on real
 commits of this repo, with the model's raw answers from the log (question texts
 unchanged since):
 

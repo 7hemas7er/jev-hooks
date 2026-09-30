@@ -107,9 +107,9 @@ test('evaluateRule: effective threshold, unless and a missing value as in the ve
   const rule = POLICY.lanes.flatMap((c) => c.rules).find((x) => x.check === 'adds_tests')
   assert.ok(rule?.unless)
   assert.equal(evaluateRule(rule, {}, S), undefined)
-  assert.deepEqual(evaluateRule(rule, values({ adds_tests: 0.01, docs_only: 0 }), S), { fires: true, value: 0.01, threshold: rule.value, source: 'policy' })
+  assert.deepEqual(evaluateRule(rule, values({ adds_tests: 0.01, docs_only: 0 }), S), { fires: true, value: 0.01, threshold: rule.value, source: 'policy', onRaw: false })
   assert.equal(evaluateRule(rule, values({ adds_tests: 0.01, docs_only: 1 }), S)?.fires, false)
-  assert.deepEqual(evaluateRule(rule, values({ adds_tests: 0.01 }), S), { fires: true, value: 0.01, threshold: rule.value, source: 'policy', unlessWithoutValue: 'docs_only' })
+  assert.deepEqual(evaluateRule(rule, values({ adds_tests: 0.01 }), S), { fires: true, value: 0.01, threshold: rule.value, source: 'policy', onRaw: false, unlessWithoutValue: 'docs_only' })
   assert.equal(evaluateRule(rule, values({ adds_tests: 0.99 }), S)?.fires, false)
 })
 
@@ -140,10 +140,10 @@ test('evaluateRule: a list of unless conditions, any of which cancels the rule',
   assert.equal(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 0, debug_leftovers: 0.05 }), S)?.fires, false)
   // a condition without a value does not hold: the rule fires, and says why
   assert.deepEqual(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 0 }), S),
-    { fires: true, value: 0.9, threshold: 0.5, source: 'policy', unlessWithoutValue: 'debug_leftovers' })
+    { fires: true, value: 0.9, threshold: 0.5, source: 'policy', onRaw: false, unlessWithoutValue: 'debug_leftovers' })
   // another condition cancels it: no note about the missing one, since it changed nothing
   assert.deepEqual(evaluateRule(rule, values({ weakens_tests: 0.9, docs_only: 1 }), S),
-    { fires: false, value: 0.9, threshold: 0.5, source: 'policy' })
+    { fires: false, value: 0.9, threshold: 0.5, source: 'policy', onRaw: false })
 })
 
 test('an unless on a missing value is false: the rule fires and the output notes it', () => {

@@ -25,7 +25,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { aggregateNoul, calibrate, calibrateDerived, consistentHashes, chooseProfile } from '../src/core/calibration.ts'
+import { aggregateNoul, calibrate, calibrateDerived, consistentHashes, chooseProfile, withThresholdScales } from '../src/core/calibration.ts'
 import type { SentNoul } from '../src/core/calibration.ts'
 import { composeConfig, isModelProbability } from '../src/core/config.ts'
 import { parseDiff } from '../src/core/diff.ts'
@@ -249,7 +249,8 @@ export function simulate(o: {
   for (const [id, sha] of Object.entries(measurement.questionHashes)) {
     if (Object.hasOwn(questions, id) && questionHash(questions[id]) !== sha) warnings.push(`${id}: the checks.json question is not the measured one (different sha256): its answers do not apply to today's text`)
   }
-  const selection = selectionFor(c, measurement.identity)
+  // the rules compare calibrated values: their thresholds follow them
+  const selection = withThresholdScales(selectionFor(c, measurement.identity), questions, c.checks)
   const hashOk = consistentHashes(questions, selection)
   const withRules = questionsWithRules(p)
   const rules: SimulatedRule[] = p.lanes.flatMap((lane) => lane.rules.map((rule) => ({ lane: lane.name, rule, text: ruleText(lane.name, rule) })))

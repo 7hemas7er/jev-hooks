@@ -29,7 +29,7 @@
 // composeConfig: the project ones that no trusted layer knows arrive here as
 // project_check_N.
 import { canonical } from './canonical.ts'
-import { ruleThreshold } from './calibration.ts'
+import { decidesOnRaw, ruleThreshold, shownBand } from './calibration.ts'
 import { isModelProbability } from './config.ts'
 import { safePath } from './diff.ts'
 import { clippedLogit, formatNumber, sigmoid } from './numbers.ts'
@@ -187,12 +187,23 @@ function itemFiles(ctx: EscalationContext, own: readonly string[], def?: CheckDe
   return Object.keys(lines).length ? { files: file, lines } : { files: file }
 }
 
-// The points where a value is looked at: the chunks (chunk questions), or the global value.
-interface Point { file: string[]; p: number }
+// The points where a value is looked at: the chunks (chunk questions), or the global
+// value. raw: the value before calibration, which the decisions on a calibrated
+// question use (calibration.ts, decidesOnRaw).
+interface Point { file: string[]; p: number; raw?: number }
 
 function pointsOf(v: CheckValue): Point[] {
-  const all = v.perChunk && v.perChunk.length ? v.perChunk.map((pp): Point => ({ file: pp.files, p: pp.p })) : [{ file: [], p: v.value }]
+  const all: Point[] = v.perChunk && v.perChunk.length
+    ? v.perChunk.map((pp): Point => ({ file: pp.files, p: pp.p, raw: pp.raw }))
+    : [{ file: [], p: v.value, ...(v.raw !== undefined ? { raw: v.raw } : {}) }]
   return all.filter((x) => Number.isFinite(x.p))
+}
+
+// The value a decision compares, and the threshold it compares it with.
+function onScale(id: string, ctx: EscalationContext, r: Rule, x: { p: number; raw?: number }): { v: number; s: number; shown: number; raw: boolean } {
+  const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+  const raw = decidesOnRaw(id, t.source, ctx.selection) && x.raw !== undefined && Number.isFinite(x.raw)
+  return raw ? { v: x.raw as number, s: r.value, shown: t.value, raw: true } : { v: x.p, s: t.value, shown: t.value, raw: false }
 }
 
 // Worst point first: with gte/gt higher is worse, with lte/lt lower is.
@@ -210,7 +221,7 @@ const WHERE_TEXT: Record<Hit['where'], string> = {
 // A hit of an if_model_disagrees detector that the model denies, with the p of the
 // chunk that contains it (undefined: the model did not see the file) and the rule it
 // was compared with.
-interface Denied { d: Detector; c: Hit; onFile: boolean; p?: number; threshold: number; delta: number }
+interface Denied { d: Detector; c: Hit; onFile: boolean; p?: number; threshold: number; delta: number; edges?: [number, number] }
 
 function deniedHits(ctx: EscalationContext, hits: readonly Hit[], detectors: ReadonlyMap<string, Detector>): Map<string, Denied[]> {
   const out = new Map<string, Denied[]>()
@@ -231,14 +242,15 @@ function deniedHits(ctx: EscalationContext, hits: readonly Hit[], detectors: Rea
     // global value. Chunks know files, not lines: if a file is split across several
     // chunks the highest applies, and the others stay covered by the question's item
     // (they are above the threshold, in the band, or in disagreement too).
-    let p: number | undefined = v.value
+    let at: { p: number; raw?: number } | undefined = { p: v.value, ...(v.raw !== undefined ? { raw: v.raw } : {}) }
     const onFile = c.file !== undefined && c.where !== 'title' && c.where !== 'description'
     if (onFile && v.perChunk && v.perChunk.length) {
       const chunks = v.perChunk.filter((pp) => pp.files.includes(c.file as string))
       // the model never saw that file (ignored, omitted): nobody confirmed the hit,
       // and asking is the cautious choice
-      p = chunks.length === 0 ? undefined : chunks.reduce((a, x) => (x.p > a.p ? x : a)).p
+      at = chunks.length === 0 ? undefined : chunks.reduce((a, x) => (x.p > a.p ? x : a))
     }
+    const p = at?.p
 
     // The model "denies" when p is below the rule's band AND on the "no"
     // side. With a high threshold, raised to 0.95 by the user, a p of 0.87 is below
@@ -247,17 +259,20 @@ function deniedHits(ctx: EscalationContext, hits: readonly Hit[], detectors: Rea
     // examples/user/policy.json: MERGE, no escalation). With thresholds below
     // 0.5 + band the second condition changes nothing. A rule with escalation has no
     // band: the model denies below its threshold, that is exactly where it would not
-    // have sent the question to Claude on its own.
-    let selection: { threshold: number; delta: number } | undefined
+    // have sent the question to Claude on its own. On a calibrated question both tests
+    // are taken on the raw value, where the band and the "no" side were meant.
+    let selection: { threshold: number; delta: number; edges?: [number, number] } | undefined
     for (const r of rulesOn(ctx.p, id, def)) {
-      const s = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk).value
       const dr = deltaOf(r, delta)
-      const lp = p === undefined ? undefined : clippedLogit(p)
-      const ls = clippedLogit(s)
+      const x = at === undefined ? undefined : onScale(id, ctx, r, at)
+      const shown = x?.shown ?? ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk).value
+      const lp = x === undefined ? undefined : clippedLogit(x.v)
+      const ls = x === undefined ? 0 : clippedLogit(x.s)
       const safe = lp === undefined
         || (r.op === 'gte' || r.op === 'gt' ? lp < ls - dr - EPS && lp < 0 : lp > ls + dr + EPS && lp > 0)
       if (safe) {
-        selection = { threshold: s, delta: dr }
+        const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+        selection = { threshold: shown, delta: dr, ...(dr > 0 ? { edges: shownBand(id, r.value, t, dr, ctx.selection) } : {}) }
         break
       }
     }
@@ -268,7 +283,7 @@ function deniedHits(ctx: EscalationContext, hits: readonly Hit[], detectors: Rea
     const key = `${id}\u0000${onFile ? c.file : c.where}`
     if (seen.has(key)) continue
     seen.add(key)
-    const x: Denied = { d, c, onFile, threshold: selection.threshold, delta: selection.delta }
+    const x: Denied = { d, c, onFile, threshold: selection.threshold, delta: selection.delta, ...(selection.edges ? { edges: selection.edges } : {}) }
     if (p !== undefined) x.p = p
     out.set(id, [...(out.get(id) ?? []), x])
   }
@@ -317,21 +332,22 @@ function questionItems(ctx: EscalationContext, hits: readonly Hit[], detectors: 
       if (r.action !== 'escalation') continue
       const e = evaluateRule(r, ctx.values, ctx.selection, ctx.extra.hashOk)
       if (!e?.fires) continue
-      threshold = { s: e.threshold, points: points.filter((x) => compare(x.p, r.op, e.threshold)).sort(worstFirst(r.op)) }
+      threshold = { s: e.threshold, points: points.filter((x) => { const o = onScale(id, ctx, r, x); return compare(o.v, r.op, o.s) }).sort(worstFirst(r.op)) }
       break
     }
 
     // the other chunks, if they are in the band around a rule without an action (only
     // critical checks): with several rules the most severe one in the band is enough
-    const inBand: { point: Point; s: number; op: Op }[] = []
+    const inBand: { point: Point; s: number; op: Op; edges: [number, number] }[] = []
     if (def.critical) {
       const rules = rulesWithBand(ctx.p, id, def)
       for (const point of points) {
         if (threshold?.points.includes(point)) continue
         for (const r of rules) {
-          const s = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk).value
-          if (Math.abs(clippedLogit(point.p) - clippedLogit(s)) > delta + EPS) continue
-          inBand.push({ point, s, op: r.op })
+          const o = onScale(id, ctx, r, point)
+          if (Math.abs(clippedLogit(o.v) - clippedLogit(o.s)) > delta + EPS) continue
+          const t = ruleThreshold(id, r.value, ctx.selection, ctx.extra.hashOk)
+          inBand.push({ point, s: o.shown, op: r.op, edges: shownBand(id, r.value, t, delta, ctx.selection) })
           break
         }
       }
@@ -347,8 +363,8 @@ function questionItems(ctx: EscalationContext, hits: readonly Hit[], detectors: 
     else if (nx.length > 0) {
       item = { check: id, reason: 'disagreement', threshold: nx[0].threshold, question, files: [] }
       if (nx[0].p !== undefined) item.p = nx[0].p
-      if (nx[0].delta > 0) item.band = band(nx[0].threshold, nx[0].delta)
-    } else item = { check: id, reason: 'band', p: inBand[0].point.p, threshold: inBand[0].s, band: band(inBand[0].s, delta), question, files: [] }
+      if (nx[0].delta > 0) item.band = nx[0].edges ?? band(nx[0].threshold, nx[0].delta)
+    } else item = { check: id, reason: 'band', p: inBand[0].point.p, threshold: inBand[0].s, band: inBand[0].edges, question, files: [] }
     const own = [
       ...(threshold?.points ?? []).flatMap((x) => x.file),
       ...nx.flatMap((x) => (x.onFile ? [x.c.file as string] : [])),

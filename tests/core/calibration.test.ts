@@ -6,13 +6,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   aggregateNoul, calibrate, calibrateDerived, consistentHashes, derivedOption, derivedProbability, restorePolarity, chooseProfile, profileThreshold,
-  ruleThreshold, SERVER_CALIBRATED_STATUS, applyTemperature,
+  ruleThreshold, SERVER_CALIBRATED_STATUS, applyTemperature, scaledThreshold, thresholdScales, withThresholdScales,
 } from '../../src/core/calibration.ts'
+import { compare, evaluateRule } from '../../src/core/verdict.ts'
 import { canonical } from '../../src/core/canonical.ts'
 import { validateCalibration, validateChecks, validatePolicy } from '../../src/core/config.ts'
 import { formatNumber } from '../../src/core/numbers.ts'
 import { questionHash } from '../../src/core/systemone.ts'
-import type { Calibration, WireQuestion, Result, Identity, Json, Profile, Answer, DerivedValue } from '../../src/core/types.ts'
+import type { Calibration, WireQuestion, Result, Identity, Json, Profile, Answer, DerivedValue, ProfileSelection, Op, CheckValue } from '../../src/core/types.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const json = (rel: string): unknown => JSON.parse(readFileSync(join(root, rel), 'utf8'))
@@ -99,21 +100,26 @@ test('Platt with the logit clipped at ±36: exact 0 and 1 stay finite and inside
   assert.ok(Math.abs(one - 1 / (1 + Math.exp(-0.3333 * 36))) < 1e-15)
 })
 
-test('rizzo profiles in the plugin: no Platt on the noul, because the thresholds are on the bench\'s raw p', () => {
+test('rizzo profiles in the plugin: the measured Spark is calibrated per question, any other rizzo keeps the raw p', () => {
   // the measured Spark is recognized by its fingerprint, every other rizzo by the prefix
   const spark = chooseProfile(CALIB, SPARK, POLICY.band)
   assert.equal(spark.profile.name, 'spark-bf16-2026-09')
-  assert.equal(spark.profile.calibrated, false)
-  assert.ok(spark.notes.includes('thresholds not calibrated for this backend (profile spark-bf16-2026-09)'))
+  assert.equal(spark.profile.calibrated, true)
+  assert.ok(!spark.notes.some((n) => n.startsWith('thresholds not calibrated')), JSON.stringify(spark.notes))
+  // a fitted question: its Platt, per question
+  const fitted = calibrateDerived('injection_risk', wire('injection_risk'), 0.9, spark)
+  const e = spark.profile.per_question?.injection_risk
+  assert.equal(fitted.tier, 'question')
+  assert.ok(Math.abs(fitted.p - 1 / (1 + Math.exp(-((e?.a ?? 0) * Math.log(9) + (e?.b ?? 0))))) < 1e-12)
   const other = chooseProfile(CALIB, RIZZO, POLICY.band)
   assert.equal(other.profile.name, 'rizzo-provisional')
+  assert.equal(calibrateDerived('injection_risk', wire('injection_risk'), 0.9, other).p, 0.9)
+  // hardcoded_secret keeps its raw p on both: the fit made the holdout worse
   for (const s of [spark, other]) {
     for (const p of [0.02, 0.5, 0.874, 0.997]) {
       const out = calibrate('hardcoded_secret', wire('hardcoded_secret'), noul(p), s)
       assert.deepEqual([pNoul(out.response), out.tier, out.note], [p, 'identity', undefined], `${s.profile.name} ${p}`)
     }
-    // nor the choice with a value, even though the profile has a temperature for choices
-    assert.equal(calibrateDerived('injection_risk', wire('injection_risk'), 0.9, s).p, 0.9)
   }
   // plain choices (primary_concern) keep the temperature 3
   const c: Answer = { type: 'choice', choice: 'nothing', probabilities: { secret: 0.1, nothing: 0.9 }, confidence: 0.8 }
@@ -439,4 +445,113 @@ test('profile thresholds only if calibrated', () => {
   assert.deepEqual(profileThreshold('hardcoded_secret', 0.7, calibrated, false), { value: 0.7, source: 'policy' })
   // an id that exists on Object's prototype is not a threshold
   assert.deepEqual(profileThreshold('constructor', 0.7, calibrated, true), { value: 0.7, source: 'policy' })
+})
+
+// ─── Thresholds on the calibrated scale ───────────────────────────────────────
+
+// A fitted profile like the one scripts/fit-calibration.ts writes: a per-question
+// Platt on a noul, on a choice with a value, on an inverted choice, and the type's noul
+// block for the nouls without an entry.
+function fitted(extra: Partial<Profile> = {}): ProfileSelection {
+  const entry = (id: string, a: number, b: number) => ({ sha256: questionHash(wire(id)), a, b })
+  const profile: Profile = {
+    name: 'fit', match: {}, calibrated: true, noul: { a: 0.7, b: -0.5 },
+    per_question: {
+      touches_auth: entry('touches_auth', 0.35, -1.04),
+      injection_risk: entry('injection_risk', 0.52, -3.58),
+      adds_tests: entry('adds_tests', 0.51, 1.1),
+      weakens_expected: entry('weakens_expected', 0.6, -1.2),
+    },
+    ...extra,
+  }
+  return { profile, mode: 'client', deltaLogit: 0.62, notes: [] }
+}
+
+const QUESTIONS: Record<string, WireQuestion> = Object.fromEntries(
+  ['hardcoded_secret', 'touches_auth', 'injection_risk', 'adds_tests', 'weakens_expected', 'primary_concern'].map((id) => [id, wire(id)]),
+)
+
+// The value the review compares: calibrated in the sent polarity, then flipped back.
+function reported(id: string, sent: number, s: ProfileSelection): number {
+  const d = CHECKS.defs[id]
+  const cal = d.value ? calibrateDerived(id, QUESTIONS[id], sent, s).p : (calibrate(id, QUESTIONS[id], { type: 'noul', noul: sent }, s).response as { noul: number }).noul
+  return restorePolarity(cal, d.invert)
+}
+
+test('a rule on a calibrated question decides on the raw value, and shows the threshold on the values\' scale', () => {
+  const s = withThresholdScales(fitted(), QUESTIONS, CHECKS)
+  const hashOk = consistentHashes(QUESTIONS, s)
+  const identity: ProfileSelection = { profile: { name: 'none', match: {}, calibrated: false }, mode: 'client', deltaLogit: 0.62, notes: [] }
+  // the choice without a value is not a probability: no scale
+  assert.deepEqual(Object.keys(s.scales ?? {}).sort(), ['adds_tests', 'hardcoded_secret', 'injection_risk', 'touches_auth', 'weakens_expected'])
+  const grid = [0, 1e-9, 0.01, 0.1, 0.25, 0.3, 0.5, 0.62, 0.7, 0.9, 0.99, 0.999999, 1]
+  let checked = 0
+  for (const id of Object.keys(s.scales ?? {})) {
+    const invert = CHECKS.defs[id].invert
+    for (const sent of grid) {
+      const raw = restorePolarity(sent, invert)
+      const cal = reported(id, sent, s)
+      for (const t of grid) {
+        for (const op of ['gte', 'gt', 'lte', 'lt'] as Op[]) {
+          const rule = { check: id, op, value: t }
+          const onCal = evaluateRule(rule, { [id]: { value: cal, raw } }, s, hashOk)
+          const onRaw = evaluateRule(rule, { [id]: { value: raw, raw } }, identity)
+          // ties included: the comparison is the raw one
+          assert.equal(onCal?.fires, onRaw?.fires, `${id} ${op} sent ${sent} threshold ${t}`)
+          assert.equal(onCal?.onRaw, true)
+          assert.equal(onCal?.threshold, scaledThreshold(id, t, s))
+          checked++
+        }
+      }
+    }
+  }
+  assert.ok(checked > 3000)
+  // the shown threshold sits where the values do: a value above it on the raw scale is above it on the shown one
+  for (const t of [0.1, 0.3, 0.7, 0.9]) {
+    for (const sent of [0.05, 0.2, 0.5, 0.8, 0.95]) {
+      const raw = restorePolarity(sent, false)
+      if (Math.abs(raw - t) < 1e-9) continue
+      assert.equal(compare(reported('touches_auth', sent, s), 'gte', scaledThreshold('touches_auth', t, s)), raw >= t)
+    }
+  }
+  // the number moves: injection_risk's 0.99 is 0.23 on the calibrated scale
+  const sigma = (z: number): number => 1 / (1 + Math.exp(-z))
+  assert.ok(Math.abs(scaledThreshold('injection_risk', 0.99, s) - sigma(0.52 * Math.log(99) - 3.58)) < 1e-12)
+  assert.equal(formatNumber(scaledThreshold('injection_risk', 0.99, s), 2), '0.23')
+  // adds_tests is compared in the reported polarity: ≤ 0.30 is "missing tests" ≥ 0.70 sent
+  assert.ok(Math.abs(scaledThreshold('adds_tests', 0.3, s) - (1 - 1 / (1 + Math.exp(-(0.51 * Math.log(0.7 / 0.3) + 1.1))))) < 1e-12)
+})
+
+test('a threshold keeps its value where nothing transforms the values: server calibration, a changed question, an identity entry', () => {
+  const server = withThresholdScales({ ...fitted(), mode: 'server' }, QUESTIONS, CHECKS)
+  assert.deepEqual(server.scales, {})
+  assert.equal(scaledThreshold('injection_risk', 0.99, server), 0.99)
+  // a changed question drops the entry: the values go through the noul block, and so does the threshold
+  const changed = fitted()
+  changed.profile.per_question = { touches_auth: { sha256: 'other', a: 0.35, b: -1.04 } }
+  const sc = thresholdScales(QUESTIONS, CHECKS, changed)
+  assert.equal(sc.touches_auth?.item, undefined)
+  // injection_risk's value is derived: without an entry it goes through the noul block too
+  assert.ok(sc.injection_risk)
+  const identity = fitted({ noul: undefined, per_question: { touches_auth: { sha256: questionHash(wire('touches_auth')), a: 1, b: 0 } } })
+  const s = withThresholdScales(identity, QUESTIONS, CHECKS)
+  assert.deepEqual(s.scales, {})
+  assert.equal(ruleThreshold('touches_auth', 0.7, s).value, 0.7)
+})
+
+test('an explicit threshold of a calibrated profile still replaces the value; an unless condition moves with its check', () => {
+  const s = withThresholdScales(fitted({ thresholds: { touches_auth: 0.5 } }), QUESTIONS, CHECKS)
+  const hashOk = consistentHashes(QUESTIONS, s)
+  assert.deepEqual(ruleThreshold('touches_auth', 0.7, s, hashOk), { value: 0.5, source: 'profile' })
+  // weakens_tests has no entry here; its condition on weakens_expected (< 0.10 raw) is
+  // evaluated on weakens_expected's calibrated value
+  const rule = { check: 'weakens_tests', op: 'gte' as Op, value: 0.5, unless: [{ check: 'weakens_expected', op: 'lt' as Op, value: 0.1 }] }
+  const identity: ProfileSelection = { profile: { name: 'none', match: {}, calibrated: false }, mode: 'client', deltaLogit: 0.62, notes: [] }
+  for (const expected of [0.05, 0.0999, 0.1, 0.1001, 0.3]) {
+    const values = (sel: ProfileSelection): Record<string, CheckValue> => ({ weakens_tests: { value: 0.9 }, weakens_expected: { value: reported('weakens_expected', expected, sel) } })
+    const raw = evaluateRule(rule, values(identity), identity)
+    const cal = evaluateRule(rule, values(s), s, hashOk)
+    assert.equal(cal?.fires, raw?.fires, `weakens_expected ${expected}`)
+    assert.equal(raw?.fires, expected >= 0.1)
+  }
 })

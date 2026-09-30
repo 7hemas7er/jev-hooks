@@ -17,7 +17,7 @@
 // terminal or a Markdown document.
 //
 // Pure (rule 4): no clock, no I/O. The caller decides where to write.
-import { consistentHashes, ruleThreshold } from './calibration.ts'
+import { consistentHashes, ruleThreshold, scaledThreshold, shownBand, withThresholdScales } from './calibration.ts'
 import { canonical } from './canonical.ts'
 import { escalationPrompt, noEscalationLine } from './escalation.ts'
 import { clippedLogit, formatNumber, sigmoid } from './numbers.ts'
@@ -686,9 +686,10 @@ export function renderExplanation(
   // δ as chooseProfile would pick it: the profile always overrides it (caution),
   // server-side calibration uses wide_delta_logit, otherwise the policy's.
   const delta = ps ? ps.profile.band_delta_logit ?? (ps.mode === 'server' ? c.calibration.wide_delta_logit : p.band.delta_logit) : p.band.delta_logit
-  const selection: ProfileSelection = ps
+  const chosen: ProfileSelection = ps
     ? { profile: ps.mode === 'server' ? { ...ps.profile, calibrated: false } : ps.profile, mode: ps.mode, deltaLogit: delta, notes: [] }
     : { profile: { name: 'none', match: {}, calibrated: false }, mode: 'client', deltaLogit: delta, notes: [] }
+  const selection = w ? withThresholdScales(chosen, { [id]: w }, c.checks) : chosen
   const hashOk = w ? consistentHashes({ [id]: w }, selection) : {}
   const policySource = `policy (${c.sources.policy ?? 'policy.json'})`
 
@@ -721,7 +722,7 @@ export function renderExplanation(
       if (r.action === 'escalation') {
         lines.push(`${space}above the threshold the question goes to Claude, without a band: the threshold is already chosen for few false alarms`)
       } else if (def.critical && def.source === 'model') {
-        const [a, b] = bandOf(thr.value, delta)
+        const [a, b] = shownBand(id, r.value, thr, delta, selection)
         lines.push(`${space}band ${formatNumber(a, 2)}–${formatNumber(b, 2)} (δ = ${formatNumber(delta, 2)} in logit): a p inside the band is escalated`)
       }
     }
@@ -729,8 +730,10 @@ export function renderExplanation(
   if (ruleCount === 0) {
     lines.push('  no rule uses this check')
     if (def.critical && def.source === 'model') {
-      const [a, b] = bandOf(0.5, delta)
-      lines.push(`  band around 0.50: ${formatNumber(a, 2)}–${formatNumber(b, 2)} (δ = ${formatNumber(delta, 2)} in logit)`)
+      // escalation's default threshold for a critical check without rules, on the raw scale
+      const mid = { value: scaledThreshold(id, 0.5, selection), source: 'policy' as const }
+      const [a, b] = shownBand(id, 0.5, mid, delta, selection)
+      lines.push(`  band around ${formatNumber(mid.value, 2)}: ${formatNumber(a, 2)}–${formatNumber(b, 2)} (δ = ${formatNumber(delta, 2)} in logit)`)
     }
   }
   if (!def.critical && def.source === 'model') lines.push('  no escalation band: not a critical check')

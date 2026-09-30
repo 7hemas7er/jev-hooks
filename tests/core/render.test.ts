@@ -304,11 +304,14 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
   // with the rule put back in BLOCK, without an action, the band comes back
   const inBlock = { ...c, policy: valueOf(validatePolicy(withSecretInBlock(readText('config/policy.json')), CHECKS, 'policy.json')) }
   assert.match(renderExplanation('hardcoded_secret', inBlock, { profile: rizzo, mode: 'client', origin: '--profile' }), /band 0\.56–0\.81 \(δ = 0\.62 in logit\)/)
-  // the measured Spark profile has the thresholds chosen on the bench, but it is not calibrated: they do not apply
+  // the measured Spark profile is calibrated per question: the policy's 0.70 moves with
+  // touches_auth's fit, σ(0.3489 · logit(0.70) − 1.0507) = 0.32
   const spark = CALIB.profiles.find((p) => p.name === 'spark-bf16-2026-09') as Profile
   const sp = renderExplanation('touches_auth', c, { profile: spark, mode: 'client', origin: 'last recorded review' })
-  assert.match(sp, new RegExp(`effective threshold ${thr('touches_auth')} · source: policy \\(~/\\.config/jev-hooks/policy\\.json\\) · threshold of profile spark-bf16-2026-09 not used: uncalibrated profile`))
-  assert.match(sp, /calibrator: identity · profile spark-bf16-2026-09 \(uncalibrated; last recorded review\)/)
+  assert.match(sp, /touches_auth ≥ 0\.70 {2}→ escalation to Claude\n +effective threshold 0\.32 · source: policy \(~\/\.config\/jev-hooks\/policy\.json\)\n/)
+  assert.match(sp, /calibrator: per question \(a = 0\.3489, b = -1\.0507, n = 118, errors = 10\) · profile spark-bf16-2026-09 \(calibrated; last recorded review\)/)
+  // hardcoded_secret has no fit: its threshold stays the policy's
+  assert.match(renderExplanation('hardcoded_secret', c, { profile: spark, mode: 'client', origin: 'x' }), new RegExp(`effective threshold ${thr('hardcoded_secret')} · source: policy`))
   assert.match(base, new RegExp(`sha256 ${questionHash(wireQuestion(CHECKS.defs.hardcoded_secret))}`))
 
   const sha = questionHash(wireQuestion(CHECKS.defs.hardcoded_secret))
@@ -323,7 +326,9 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
   assert.match(renderExplanation('hardcoded_secret', inBlock, { profile: calibrated, mode: 'client', origin: '--profile' }), /δ = 0\.5 in logit|δ = 0\.50 in logit/)
 
   const modified = renderExplanation('hardcoded_secret', c, { profile: { ...calibrated, per_question: { hardcoded_secret: { sha256: 'other', a: 0.29 } } }, mode: 'client', origin: 'x' })
-  assert.match(modified, new RegExp(`effective threshold ${thr('hardcoded_secret')} · source: policy .* threshold of profile spark-calibrated ignored: question changed after the calibration fit`))
+  // the values then go through the profile's noul block, and so does the policy threshold:
+  // σ(0.31 · logit(0.10) − 0.2) = 0.29
+  assert.match(modified, /effective threshold 0\.29 · source: policy .* threshold of profile spark-calibrated ignored: question changed after the calibration fit/)
   assert.match(modified, /per-question entry ignored/)
 
   const uncalibrated = renderExplanation('hardcoded_secret', c, { profile: { ...calibrated, calibrated: false }, mode: 'client', origin: 'x' })

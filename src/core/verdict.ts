@@ -9,7 +9,7 @@
 // - partial coverage can only raise it: a problem found counts even in an incomplete
 //   review, the absence of problems does not;
 // - a rule without a value does not fire, but that is reported ("unevaluated").
-import { ruleThreshold } from './calibration.ts'
+import { decidesOnRaw, ruleThreshold, scaledThreshold } from './calibration.ts'
 import type {
   Checks, CiConclusion, Lane, DetectorResult, Op, Policy, Rule, ReviewResult, FiredRule, ProfileSelection, CheckValue,
   EscalationItem,
@@ -72,10 +72,18 @@ export function partialCoverage(z: CoverageGaps): string | null {
 // way everywhere.
 export interface EvaluatedRule {
   fires: boolean
-  value: number
-  threshold: number
+  value: number                       // as shown: calibrated
+  threshold: number                   // as shown: on the values' scale
   source: 'policy' | 'profile'
+  onRaw: boolean                      // compared raw value against the policy's value
   unlessWithoutValue?: string
+}
+
+// The raw value of a check, if the review kept it.
+export function rawValue(v: Readonly<Record<string, CheckValue>>, id: string): number | undefined {
+  if (!Object.hasOwn(v, id)) return undefined
+  const x = v[id].raw
+  return x !== undefined && Number.isFinite(x) ? x : undefined
 }
 
 export function evaluateRule(
@@ -84,17 +92,22 @@ export function evaluateRule(
   const x = numericValue(v, r.check)
   if (x === undefined) return undefined
   const thr = ruleThreshold(r.check, r.value, s, hashOk)
-  const out: EvaluatedRule = { fires: compare(x, r.op, thr.value), value: x, threshold: thr.value, source: thr.source }
+  // a policy value on a calibrated question is compared with the raw value it was chosen on
+  const raw = decidesOnRaw(r.check, thr.source, s) ? rawValue(v, r.check) : undefined
+  const fires = raw !== undefined ? compare(raw, r.op, r.value) : compare(x, r.op, thr.value)
+  const out: EvaluatedRule = { fires, value: x, threshold: thr.value, source: thr.source, onRaw: raw !== undefined }
   if (!out.fires || !r.unless) return out
   // The profile's threshold replaces the value of the rules ON that check, not of the
   // conditions that cancel a rule: an unless that is easier to satisfy would lower the
-  // verdict. Any condition that holds cancels the rule; one without a value does not
-  // hold, so a missing answer can only leave the rule firing.
+  // verdict. A condition on a calibrated question is compared raw, as a rule is. Any
+  // condition that holds cancels the rule; one without a value does not hold, so a
+  // missing answer can only leave the rule firing.
   let missing: string | undefined
   for (const c of r.unless) {
     const u = numericValue(v, c.check)
+    const ur = decidesOnRaw(c.check, 'policy', s) ? rawValue(v, c.check) : undefined
     if (u === undefined) missing ??= c.check
-    else if (compare(u, c.op, c.value)) out.fires = false
+    else if (compare(ur ?? u, c.op, ur !== undefined ? c.value : scaledThreshold(c.check, c.value, s))) out.fires = false
   }
   // the note says the rule fired because a condition had no value: only when it did
   if (out.fires && missing !== undefined) out.unlessWithoutValue = missing

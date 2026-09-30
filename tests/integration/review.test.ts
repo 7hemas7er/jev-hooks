@@ -916,7 +916,7 @@ test('choice with a value: 1 − p(none) calibrated like a noul, maximum across 
   const scenario = {
     rules: [
       { if_state_contains: 'amount_m1_0', answers: { injection_risk: selection(0.1, 0.85, 0.05) } },
-      { if_state_contains: 'amount_m2_0', answers: { injection_risk: selection(0.6, 0.1, 0.3) } },
+      { if_state_contains: 'amount_m2_0', answers: { injection_risk: selection(0.4, 0.1, 0.5) } },
       { if_state_contains: '[title]', answers: { adds_tests: { type: 'choice', choice: 'code_without_test_file', probabilities: { none: 0.2, code_without_test_file: 0.8 }, confidence: 0.6 } } },
     ],
   }
@@ -924,7 +924,7 @@ test('choice with a value: 1 − p(none) calibrated like a noul, maximum across 
     const r = await review(input(diffOf(3)), { ...config({ checks, policy: pol }), calibration }, deps(backendOf(fake.url)))
     assert.equal(r.outcome, 'ok', JSON.stringify(r.error))
     const sigma = (z: number): number => 1 / (1 + Math.exp(-z))
-    // per chunk: none = 1 (the fake's default) → 0; 0.9; 0.4. The maximum is the second chunk
+    // per chunk: none = 1 (the fake's default) → 0; 0.9; 0.6. The maximum is the second chunk
     const ir = r.values.injection_risk
     assert.ok(Math.abs(ir.value - sigma(0.5 * Math.log(9))) < 1e-9, String(ir.value))
     assert.ok(Math.abs((ir.raw ?? 0) - 0.9) < 1e-9)
@@ -932,12 +932,19 @@ test('choice with a value: 1 − p(none) calibrated like a noul, maximum across 
     assert.deepEqual(ir.worst, ['src/module_1.py'])
     assert.equal(ir.perChunk?.length, 3)
     assert.equal(ir.choice, undefined, 'it is not a choice: it is a probability')
-    // it enters the rules: 0.75 ≥ 0.7 → BLOCK
+    // it enters the rules, decided on the raw value (0.9 ≥ 0.7 → BLOCK) and shown on the
+    // values' scale: 0.75 against σ(0.5 · logit(0.7)) = 0.60
     assert.equal(r.lane, 'BLOCK')
-    assert.ok(r.fired.some((x) => x.check === 'injection_risk' && x.source === 'policy'), JSON.stringify(r.fired))
-    // critical: the band in logit applies chunk by chunk, on the files of the chunk in the band
+    const fired = r.fired.find((x) => x.check === 'injection_risk')
+    assert.equal(fired?.source, 'policy', JSON.stringify(r.fired))
+    assert.ok(Math.abs((fired?.threshold ?? 0) - sigma(0.5 * Math.log(0.7 / 0.3))) < 1e-9, String(fired?.threshold))
+    // critical: the band in logit applies chunk by chunk, on the raw values, on the files
+    // of the chunk in the band: 0.6 is 0.44 from 0.7 in raw logit (δ 0.62), 0.9 is 1.35 away
     const band = r.escalation.filter((v) => v.reason === 'band' && v.check === 'injection_risk')
-    assert.deepEqual(band.map((v) => v.files[0]), ['src/module_1.py'])
+    assert.deepEqual(band.map((v) => v.files[0]), ['src/module_2.py'])
+    // its edges, moved like the threshold: σ(0.5 · (logit(0.7) ∓ 0.62))
+    const edges = band[0].band ?? [0, 0]
+    assert.ok(Math.abs(edges[0] - sigma(0.5 * (Math.log(0.7 / 0.3) - 0.62))) < 1e-9 && Math.abs(edges[1] - sigma(0.5 * (Math.log(0.7 / 0.3) + 0.62))) < 1e-9, JSON.stringify(edges))
     // invert: the sent question says "tests missing" (1 − p(none) = 0.8), the value is 1 − p
     const at = r.values.adds_tests
     assert.ok(Math.abs(at.value - (1 - sigma(0.5 * Math.log(4)))) < 1e-9, String(at.value))

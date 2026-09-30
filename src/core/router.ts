@@ -356,13 +356,18 @@ export function parseClassification(cfg: RouterConfig, b: RouterBackend, status:
   const levels: Record<string, number> = {}
   const choices: Record<string, { option: string; p: number }> = {}
   const missing: string[] = []
+  // a calibrated profile says nothing about the router's questions: only a question
+  // that went through a fit of its own makes the classification calibrated
+  let fitted = false
   for (const id of ids) {
     const answer = Object.hasOwn(resp.answers, id) ? resp.answers[id] : undefined
     if (!answer) {
       missing.push(id)
       continue
     }
-    const r = calibrate(id, cfg.questions[id], answer, sel).response
+    const c = calibrate(id, cfg.questions[id], answer, sel)
+    if (c.tier === 'question') fitted = true
+    const r = c.response
     if (r.type === 'noul') p[id] = r.noul
     else if (r.type === 'choice') {
       // Without a temperature (a server-calibrated answer, a profile with no choice
@@ -389,7 +394,7 @@ export function parseClassification(cfg: RouterConfig, b: RouterBackend, status:
     choices,
     missing,
     profile: sel.profile.name,
-    calibrated: sel.profile.calibrated && sel.mode === 'client',
+    calibrated: sel.profile.calibrated && sel.mode === 'client' && fitted,
   })
 }
 

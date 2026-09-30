@@ -13,7 +13,7 @@ import { LOGIT_MAX, clippedLogit, sigmoid } from './numbers.ts'
 import { questionHash } from './systemone.ts'
 import type {
   Calibration, WireQuestion, Identity, CalibrationMode, Policy, Profile, Answer, ProfileSelection, CheckValue, ChunkValue, DerivedValue,
-  CalibrationEntry,
+  CalibrationEntry, Checks, ThresholdScale,
 } from './types.ts'
 
 export type { CalibrationMode, ProfileSelection } from './types.ts'
@@ -292,11 +292,89 @@ export function profileThreshold(check: string, ruleValue: number, s: ProfileSel
 
 // profileThreshold() with the consistency read from the consistentHashes map. A
 // question missing from the map is consistent only if the profile has no entry for
-// it: when in doubt the policy applies, which is the value the user wrote.
+// it: when in doubt the policy applies, which is the value the user wrote. A policy
+// value moves onto the scale of the calibrated values (scaledThreshold).
 export function ruleThreshold(check: string, ruleValue: number, s: ProfileSelection, hashOk?: Readonly<Record<string, boolean>>):
   { value: number; source: 'policy' | 'profile' } {
   const consistent = hashOk && Object.hasOwn(hashOk, check) ? hashOk[check] : entryOf(s.profile, check) === undefined
-  return profileThreshold(check, ruleValue, s, consistent)
+  const t = profileThreshold(check, ruleValue, s, consistent)
+  return t.source === 'profile' ? t : { value: scaledThreshold(check, ruleValue, s), source: 'policy' }
+}
+
+// ─── Thresholds on the calibrated scale ───────────────────────────────────────
+//
+// A policy threshold is written on the scale of the raw probabilities it was chosen
+// on (the bench's, in the _why of each rule). When the profile transforms a
+// question's values (a per-question entry measured on the text that is sent, or the
+// type's noul block), the decisions on that question stay on the raw scale: rules,
+// unless conditions, the band and the disagreement with a detector compare the raw
+// value with the policy's value (decidesOnRaw), so a fit changes no verdict and no
+// escalation, for the plugin's rules and for a user's or a project's, whose
+// restrictions stay restrictions. A band of δ in raw logit is δ·a in calibrated logit,
+// and the fixed 0.5 of the disagreement test moves too: comparing raw values keeps
+// both where they were. What is shown is calibrated: the value, and the threshold and
+// band edges moved through the same function (scaledThreshold, shownBand), which now
+// mean what they say. Only an explicit threshold of a calibrated profile is compared
+// on the calibrated scale (profileThreshold).
+
+// The questions whose values the profile transforms, with what the values used.
+export function thresholdScales(questions: Readonly<Record<string, WireQuestion>>, checks: Pick<Checks, 'defs'>, s: ProfileSelection):
+  Record<string, ThresholdScale> {
+  const out: Record<string, ThresholdScale> = {}
+  if (s.mode === 'server') return out
+  for (const id of Object.keys(questions)) {
+    if (!Object.hasOwn(checks.defs, id)) continue
+    const def = checks.defs[id]
+    const derived = def.type === 'choice' && def.value !== undefined
+    if (def.source !== 'model' || (def.type !== 'noul' && !derived)) continue
+    const { item } = consistentEntry(id, questions[id], s)
+    // an entry of a = 1, b = 0 leaves the values as they are: so does the threshold,
+    // exactly, without the rounding of a round trip through the logit
+    if (isIdentity(item, s.profile, derived)) continue
+    out[id] = { invert: def.invert, derived, ...(item ? { item } : {}) }
+  }
+  return out
+}
+
+// The same order of precedence as platt().
+function isIdentity(item: CalibrationEntry | undefined, pr: Profile, withTemperature: boolean): boolean {
+  if (item?.a !== undefined) return item.a === 1 && (item.b ?? 0) === 0
+  if (withTemperature && item?.t !== undefined) return item.t === 1
+  if (pr.noul) return pr.noul.a === 1 && pr.noul.b === 0
+  return true
+}
+
+export function withThresholdScales(s: ProfileSelection, questions: Readonly<Record<string, WireQuestion>>, checks: Pick<Checks, 'defs'>):
+  ProfileSelection {
+  return { ...s, scales: thresholdScales(questions, checks, s) }
+}
+
+// A policy value on the scale of the check's calibrated values, to show next to them:
+// the same function the values went through.
+export function scaledThreshold(check: string, value: number, s: ProfileSelection): number {
+  const sc = s.scales && Object.hasOwn(s.scales, check) ? s.scales[check] : undefined
+  if (!sc || s.mode === 'server') return value
+  const p = platt(sc.invert ? 1 - value : value, sc.item, s.profile, sc.derived).p
+  return sc.invert ? 1 - p : p
+}
+
+// Whether a decision against this threshold is taken on the raw value: a policy value
+// on a question whose values the profile transforms.
+export function decidesOnRaw(check: string, source: 'policy' | 'profile', s: ProfileSelection): boolean {
+  return source === 'policy' && s.mode !== 'server' && !!s.scales && Object.hasOwn(s.scales, check)
+}
+
+// The band of δ around a threshold, as shown: taken in raw logit around the policy's
+// value when the decision is raw, then moved like the threshold; otherwise around the
+// effective threshold.
+export function shownBand(check: string, ruleValue: number, t: { value: number; source: 'policy' | 'profile' }, delta: number, s: ProfileSelection):
+  [number, number] {
+  if (decidesOnRaw(check, t.source, s)) {
+    const z = clippedLogit(ruleValue)
+    return [scaledThreshold(check, sigmoid(z - delta), s), scaledThreshold(check, sigmoid(z + delta), s)]
+  }
+  const z = clippedLogit(t.value)
+  return [sigmoid(z - delta), sigmoid(z + delta)]
 }
 
 // ─── Polarity and aggregation of nouls ────────────────────────────────────────

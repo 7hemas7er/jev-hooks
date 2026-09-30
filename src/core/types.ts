@@ -403,7 +403,18 @@ export interface Plan {
 
 export type CalibrationMode = 'client' | 'server'   // server: probability_status is EXACTLY ["temperature_scaled_requires_held_out_validation"]
 
-export interface ProfileSelection { profile: Profile; mode: CalibrationMode; deltaLogit: number; notes: string[] }
+// How a question's thresholds follow its calibrated values (calibration.ts,
+// thresholdScales): the entry the values used, the polarity of the sent question, and
+// whether the value is a choice's derived probability.
+export interface ThresholdScale { item?: CalibrationEntry; invert: boolean; derived: boolean }
+
+export interface ProfileSelection {
+  profile: Profile
+  mode: CalibrationMode
+  deltaLogit: number
+  notes: string[]
+  scales?: Readonly<Record<string, ThresholdScale>>
+}
 
 // ─── Verdict and escalation (verdict.ts, escalation.ts) ──────────────────────
 
@@ -564,7 +575,7 @@ export interface Classification {
   choices: Record<string, { option: string; p: number }>   // argmax option and its calibrated p, per choice id
   missing: string[]                        // asked but not answered (discarded or absent), sorted
   profile: string                          // calibration profile name
-  calibrated: boolean                      // profile.calibrated && client-side mode
+  calibrated: boolean                      // profile.calibrated, client-side mode, and a router question with a fit of its own
 }
 
 export interface RouterBackend extends Backend {}

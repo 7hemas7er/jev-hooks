@@ -72,18 +72,24 @@ test('the four default JSON files are valid', () => {
 // hashes in per_question must be those of checks.json, and checks.json must hold the
 // exact text of the bench variants. One changed comma, or two swapped options, and the
 // calibration fit that will come from the holdout set would not apply.
-test('Spark profile: uncalibrated, policy.json thresholds, hashes of the measured variants', () => {
+test('Spark profile: calibrated per question from its fit, no thresholds of its own, hashes of the measured variants', () => {
   const c = checks()
   const p = policy()
   const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
   const spark = k.profiles[0]
   assert.equal(spark.name, 'spark-bf16-2026-09')
   assert.match(spark.match.fingerprint ?? '', /^[0-9a-f]{64}$/)
-  assert.equal(spark.calibrated, false)
-  assert.equal(spark.noul, undefined, 'thresholds chosen on the raw p: no Platt')
+  assert.equal(spark.calibrated, true)
+  assert.equal(spark.noul, undefined, 'a Platt per question, no block for the type')
+  // the policy's thresholds move with their question: an explicit threshold would replace them
+  assert.equal(spark.thresholds, undefined)
   const thresholds: Record<string, number> = {}
   for (const l of p.lanes) for (const r of l.rules) thresholds[r.check] = r.value
-  assert.deepEqual(spark.thresholds, thresholds)
+  // the entries are those scripts/fit-calibration.ts wrote
+  const fit = json('bench/results/2026-09-30-calibration/profile.json') as { per_question: Record<string, Record<string, unknown>> }
+  for (const [id, e] of Object.entries(spark.per_question ?? {})) {
+    if (Object.hasOwn(fit.per_question, id)) assert.deepEqual({ ...e }, fit.per_question[id], id)
+  }
   // the questions measured on the bench: those the rules decide on, and those an unless asks
   const asked = new Set(Object.keys(thresholds))
   for (const l of p.lanes) for (const r of l.rules) for (const u of r.unless ?? []) if (c.defs[u.check].source === 'model') asked.add(u.check)

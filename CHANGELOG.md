@@ -5,8 +5,30 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- The Spark's profile (`spark-bf16-2026-09`) is calibrated: a Platt scaling per question,
+  fitted on the dev measurement and adopted for the seven questions where a > 0 and it
+  lowers the holdout's log-loss (`injection_risk` from 0.657 to 0.124);
+  `hardcoded_secret` (worse on the holdout), `weakens_expected` (no labels of its own on
+  dev) and `description_matches` (a ≤ 0) keep their raw p. The verdicts do not change:
+  on a calibrated question every decision (rules, `unless`, band, disagreement with a
+  detector) is still taken on the raw value, and a test replays both bench sets diff by
+  diff against the unfitted profile, with the plugin's policy and with bands and
+  disagreement on the fitted questions. What is shown does change: the calibrated value,
+  with the threshold and band moved through the same fit (`injection_risk`'s 0.99 is
+  shown as 0.22), which now mean what they say for a mix of problems like the bench's.
+- Before, a profile with a Platt and no thresholds of its own compared calibrated values
+  with the policy's raw thresholds, and the band and the disagreement test on the
+  calibrated scale: no plugin profile had one, so nothing shipped was affected.
+- The effort router calls its classification calibrated only when one of its own
+  questions went through a fit, not because the backend's profile is calibrated.
+
 ### Added
 
+- `scripts/fit-calibration.ts`: fits the per-question Platt scaling from two bench
+  measurements, one to fit and one to check, and writes the report and the profile's
+  entries (`bench/results/2026-09-30-calibration`).
 - `bench/live-reviews.jsonl`: 44 commits of this repo the live reviewer saw in full,
   labelled for the nine questions by two independent agents with the bench
   definitions (394 of 396 labels agreed; a third decided the other two). Too few

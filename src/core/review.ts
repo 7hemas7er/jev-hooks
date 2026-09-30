@@ -15,7 +15,7 @@
 //   through without even the floors.
 //
 // Pure (rule 4): time, network, randomness and project regexes come from outside.
-import { aggregateNoul, calibrate, calibrateDerived, consistentHashes, derivedOption, derivedProbability, chooseProfile } from './calibration.ts'
+import { aggregateNoul, calibrate, calibrateDerived, consistentHashes, derivedOption, derivedProbability, chooseProfile, withThresholdScales } from './calibration.ts'
 import type { SentNoul } from './calibration.ts'
 import { canonical } from './canonical.ts'
 import { prng } from './random.ts'
@@ -717,10 +717,12 @@ async function reviewInner(
     pathRegexesTimedOut,
   }
   const hashOk = consistentHashes(all, selection)
-  const decision = decide(values, p, selection, det.floors, partial, hashOk)
+  // the rules compare calibrated values: their thresholds follow them
+  const scaled = withThresholdScales(selection, all, checks)
+  const decision = decide(values, p, scaled, det.floors, partial, hashOk)
   // With an error there is no review to quote, only what is known without the model:
   // detectors that always need a look and files not examined.
-  const items = escalation(values, checks, selection, det, finalPlan, p, {
+  const items = escalation(values, checks, scaled, det, finalPlan, p, {
     hashOk, file: d.files, truncated: d.truncated, incomplete: outcome === 'incomplete',
   })
   Object.assign(values, valuesFromVerdict(checks, decision.lane, items, partial))

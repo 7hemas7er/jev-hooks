@@ -8,10 +8,16 @@
   positives per question (`adds_tests` aside), written and labelled by one person.
   Labels were not double-annotated, and the holdout set was written by the same author
   who wrote the dev set. The AUROCs [above](evaluation.md#the-measured-bench) can move by several points on real code.
-- **No calibration fit yet.** `calibrated` is `false` in every profile: thresholds sit on
-  raw probabilities of one backend identity. Another quantization or llama.cpp build
-  changes the fingerprint and falls back to a provisional profile; Jev has not been
-  measured on the bench at all.
+- **Calibrated on a synthetic bench, for one backend.** Only the Spark's profile is
+  calibrated (2026-09-30), per question, on 118 synthetic diffs with 7 to 12 positives
+  per question (`adds_tests` aside), and checked on 121 more; `hardcoded_secret`,
+  `weakens_expected` and `description_matches` keep their raw p. The probabilities fit a
+  mix of problems like the bench's and read high on real commits, which have fewer. The
+  thresholds were chosen on the raw p and the decisions stay on it, so the verdicts are
+  those of the raw scale ([Calibration](evaluation.md#calibration)); only what is shown
+  is calibrated. Another quantization
+  or llama.cpp build changes the fingerprint and falls back to a provisional, uncalibrated
+  profile; Jev has not been measured on the bench at all.
 - **Injection resistance is partial.** Floors catch what a regex can see. A well-crafted
   injection can still lower a probability below a threshold.
 - **A safety net, not a barrier.** Commits made outside Claude's Bash tool, through

@@ -444,6 +444,30 @@ node scripts/simulate-policy.ts bench/results/2026-09-26-holdout --json
 
 No network, no key, no writes.
 
+## Fitting the calibration: `scripts/fit-calibration.ts`
+
+```bash
+node scripts/fit-calibration.ts --fit bench/results/2026-09-26-dev-checks \
+  --check bench/results/2026-09-26-holdout --out bench/results/2026-09-30-calibration --date 2026-09-30
+```
+
+It fits a Platt scaling per question on the `attuale` answers of `--fit` and checks it
+on those of `--check`, with no request to the backend. A question is fitted only if
+both reports list today's sha256 for it, and adopted only if a > 0 and the log-loss of
+the check set goes down; the others keep only their sha256. It writes `report.md`
+(log-loss, Brier and ECE before and after on both sets, AUROC, and where each policy
+threshold lands on the calibrated scale) and `profile.json`, whose `per_question` block
+goes into the backend's profile in `config/calibration.json`, with
+`"calibrated": true`. The two measurements must come from the same fingerprint.
+
+The fit does not choose thresholds: on a calibrated question the reviewer keeps deciding
+on the raw value against the policy's threshold, and shows the threshold moved through
+the fit, so the verdicts stay those of the raw scale. `tests/bench/simulate.test.ts`
+checks it on both bench sets, diff by diff, against the same profile without its fit,
+with the plugin's policy and with one that has bands and disagreement on the fitted
+questions; `simulate-policy.ts --json` with and without a `--config-dir` holding the new
+`calibration.json` shows the same counts.
+
 ## Tests
 
 ```bash

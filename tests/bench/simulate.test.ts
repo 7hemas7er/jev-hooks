@@ -250,3 +250,61 @@ test('command line: text and --json on the two sets, exit 2 for a usage error', 
   assert.equal(main([HOLDOUT, '--dunno'], env, () => {}, error), 2)
   assert.match(errors, /missing the directory[\s\S]*raw\.jsonl is missing[\s\S]*unknown option: --dunno/)
 })
+
+// ─── The calibration changes no decision ──────────────────────────────────────
+
+// The Spark's profile as it was before its fit: the same entries without a and b.
+function uncalibrated(dir: string, policy?: unknown): string {
+  mkdirSync(dir, { recursive: true })
+  const c = JSON.parse(readFileSync(join(ROOT, 'config', 'calibration.json'), 'utf8'))
+  for (const p of c.profiles) {
+    if (p.name !== 'spark-bf16-2026-09') continue
+    p.calibrated = false
+    for (const e of Object.values(p.per_question as Record<string, Record<string, unknown>>)) for (const k of ['a', 'b', 'n', 'errors']) delete e[k]
+  }
+  writeFileSync(join(dir, 'calibration.json'), JSON.stringify(c))
+  if (policy !== undefined) writeFileSync(join(dir, 'policy.json'), JSON.stringify(policy))
+  return dir
+}
+
+// A user policy that uses what the plugin's does not: every critical rule without its
+// action, so the band applies around it, and detectors that escalate when the model
+// disagrees, on two fitted questions.
+function bandsAndDisagreement(): unknown {
+  const p = JSON.parse(readFileSync(join(ROOT, 'config', 'policy.json'), 'utf8'))
+  for (const lane of p.lanes) for (const r of lane.rules) delete r.action
+  p.detectors.push(
+    { name: 'user_sql', label: 'SQL text', check: 'injection_risk', where: ['added_lines'], regex: '\\b(select|insert|update|delete|query|exec)\\b', flags: 'i', floor: null, escalate: 'if_model_disagrees' },
+    { name: 'user_auth', label: 'Auth text', check: 'touches_auth', where: ['added_lines'], regex: '\\b(auth|login|token|session|role|permission)', flags: 'i', floor: null, escalate: 'if_model_disagrees' },
+  )
+  return p
+}
+
+const decisions = (s: Simulation) => s.diffs.map((d) => ({
+  id: d.id, lane: d.lane, fromFloor: d.fromFloor, fires: d.fires, items: d.items.map((v) => [v.reason, v.check ?? v.detector, v.files]),
+}))
+
+for (const [name, dir] of [['holdout', HOLDOUT], ['dev-checks', DEV]] as const) {
+  test(`${name}: the calibrated profile decides every diff as the raw one, with the plugin's policy and with bands and disagreement`, () => {
+    for (const [label, policy] of [['plugin policy', undefined], ['bands and disagreement', bandsAndDisagreement()]] as const) {
+      const cal = policy === undefined ? run(dir) : run(dir, (() => {
+        const d = join(base, `cal-${name}-${label.replace(/\W/g, '')}`)
+        mkdirSync(d, { recursive: true })
+        writeFileSync(join(d, 'policy.json'), JSON.stringify(policy))
+        return d
+      })())
+      const rawRun = run(dir, uncalibrated(join(base, `raw-${name}-${label.replace(/\W/g, '')}`), policy))
+      assert.equal(cal.s.config.calibrated, true, label)
+      assert.equal(rawRun.s.config.calibrated, false, label)
+      assert.deepEqual(decisions(cal.s), decisions(rawRun.s), label)
+      if (policy !== undefined) {
+        // the case is not empty: the band and the detectors do produce items here
+        const reasons = new Set(cal.s.diffs.flatMap((d) => d.items.map((v) => v.reason)))
+        assert.ok(reasons.has('band') && reasons.has('disagreement'), [...reasons].join(', '))
+      }
+      // what is shown does move: some thresholds in the items are on the calibrated scale
+      const shown = (s: Simulation) => s.diffs.flatMap((d) => d.items.map((v) => v.threshold)).filter((t) => t !== undefined)
+      assert.notDeepEqual(shown(cal.s), shown(rawRun.s), label)
+    }
+  })
+}
