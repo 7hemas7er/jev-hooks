@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.11.0 — 2026-10-01
+
+Fewer empty notes and escalations on real commits, measured on this repository's own
+reviews, and a calibrated profile can no longer loosen a project's rule.
+
 ### Changed
 
 - `data_migration`'s note needs 0.76 instead of 0.20: 0.20 on the Spark's calibrated
