@@ -5,6 +5,16 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `data_migration`'s note needs 0.76 instead of 0.20: 0.20 on the Spark's calibrated
+  scale. Every positive is kept on both bench sets, the false notes drop from 3 to 0 of
+  111 on dev and from 8 to 3 on the holdout, and on 61 reviewed commits of this
+  repository, which has no migrations, from 5 to none.
+- `touches_auth` no longer escalates a documentation-only commit: a README and
+  CHANGELOG change scored 0.90 live, while documentation cannot change who gets in. The
+  bench numbers are the same with and without it.
+
 ### Fixed
 
 - An explicit threshold in a calibrated profile no longer loosens a project's rule. It

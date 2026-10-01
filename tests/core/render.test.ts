@@ -308,7 +308,7 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
   // touches_auth's fit, σ(0.3489 · logit(0.70) − 1.0507) = 0.32
   const spark = CALIB.profiles.find((p) => p.name === 'spark-bf16-2026-09') as Profile
   const sp = renderExplanation('touches_auth', c, { profile: spark, mode: 'client', origin: 'last recorded review' })
-  assert.match(sp, /touches_auth ≥ 0\.70 {2}→ escalation to Claude\n +effective threshold 0\.32 · source: policy \(~\/\.config\/jev-hooks\/policy\.json\)\n/)
+  assert.match(sp, /touches_auth ≥ 0\.70 unless docs_only ≥ 0\.50 {2}→ escalation to Claude\n +effective threshold 0\.32 · source: policy \(~\/\.config\/jev-hooks\/policy\.json\)\n/)
   assert.match(sp, /calibrator: per question \(a = 0\.3489, b = -1\.0507, n = 118, errors = 10\) · profile spark-bf16-2026-09 \(calibrated; last recorded review\)/)
   // hardcoded_secret has no fit: its threshold stays the policy's
   assert.match(renderExplanation('hardcoded_secret', c, { profile: spark, mode: 'client', origin: 'x' }), new RegExp(`effective threshold ${thr('hardcoded_secret')} · source: policy`))
