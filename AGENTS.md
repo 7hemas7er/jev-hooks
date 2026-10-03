@@ -1,16 +1,18 @@
 # jev-hooks — instructions for agents
 
-This repo is both a Claude Code plugin and its marketplace (`7hemas7er-jev-hooks`).
-It holds a commit reviewer that asks typed questions of a `/v1/systemone` backend
+This repo is both a Claude Code plugin and its marketplace (`7hemas7er-jev-hooks`). It
+holds a commit reviewer that asks typed questions of a `/v1/systemone` backend
 (TypeSafe's Jev or rizzo-flow) and computes the verdict in code, and a per-turn effort
 router: a function hook (`hooks/register.ts`, early access, off unless the
 `effort_router` option is true) that asks the same backend what kind of request a
 prompt is and lowers that turn's effort. Its decisions are pure functions in
 `src/core/router.ts`; its questions and thresholds are in `config/router.json`. The
-README, the pages in `docs/`, this file and the comments in the code are the
-reference. The maintainer's design notes are not published (a local `.piano/`
-directory, ignored by git): read them if you have them, otherwise open an issue before
-changing the architecture.
+same module draws a status line (the `status_line` option, on by default): the version
+the session runs, a newer one installed, the last commit review, from
+`src/core/status-line.ts`. The README, the pages in `docs/`, this file and the
+comments in the code are the reference. The maintainer's design notes are not
+published (a local `.piano/` directory, ignored by git): read them if you have them,
+otherwise open an issue before changing the architecture.
 
 ## Code rules
 

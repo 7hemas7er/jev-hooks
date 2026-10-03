@@ -92,3 +92,8 @@ running one in Claude Code's plugin cache, the first commit review, `/jev-review
 `/jev-status` of the session adds one line to the user, once: `jev-hooks 0.15.0 is
 installed, but this session still runs 0.14.0: /reload-plugins loads it`. It looks only
 at the version folders beside its own, and says nothing for a `--plugin-dir` checkout.
+From 0.15.0, where function hooks are on, the status line under the prompt says it all
+the time: `jev 0.15.0 · 0.16.0 installed: /reload-plugins · last commit NITS, escalated
+hardcoded_secret`. It looks again at every turn start and reads the review log after
+each Bash call that may commit; with the effort router on, the router's text follows it
+during a routed turn. `status_line: false` in `/plugin` turns it off.

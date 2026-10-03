@@ -5,6 +5,19 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- A status line under the prompt, on by default where function hooks are on (the
+  `status_line` option): `jev 0.15.0 · 0.16.0 installed: /reload-plugins · last commit
+  NITS, escalated hardcoded_secret`. It shows the version the session runs, a newer one
+  installed beside it (checked at every turn start), and the outcome of the session's
+  last commit review (read from the review log after each Bash call that may commit).
+  It reads only the plugin's version folders and its log, sends nothing anywhere, and
+  shares the plugin's one status line with the effort router, whose text follows it.
+  `JEV_HOOKS_DISABLE=1` turns it off with the rest. Prototyped as a hot-reloading mod
+  first; its logic is pure (`src/core/status-line.ts`) and tested under Node and in
+  Claude Code's own test kit.
+
 ## 0.14.0 — 2026-10-03
 
 A session running an older version than the installed one now says so, once.

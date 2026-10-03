@@ -296,7 +296,8 @@ prefer a local rizzo. The prompt is never written to a log.
 
 ## Switches
 
-- `effort_router: false` in `/plugin`: the module reloads and registers nothing.
+- `effort_router: false` in `/plugin`: the module reloads and registers nothing for the
+  router (the status line keeps its own hooks, unless `status_line` is false too).
 - `JEV_HOOKS_ROUTER=0` turns off the router alone, `JEV_HOOKS_DISABLE=1` the whole
   plugin. Both are read at every prompt from Claude Code's own environment, which is
   set before it starts: exported in the shell that launches `claude`, or in the `env`

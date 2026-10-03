@@ -52,6 +52,7 @@ Then open `/plugin`, pick jev-hooks and fill in its options:
 | `model` | `jev-latest` | Requested model, for the reviewer and the router; `jev-latest` also works with rizzo-flow |
 | `commit_review` | `true` | Review when Claude runs `git commit` |
 | `effort_router` | `false` | Turn the [effort router](router.md#effort-router-opt-in) on; it also needs function hooks |
+| `status_line` | `true` | One line under the prompt: the version this session runs, a newer one installed (then `/reload-plugins`), the last commit review; it needs function hooks |
 
 **Where the key lives, and why.** `api_key` and `router_api_key` are `sensitive`
 options: Claude Code keeps them out of `settings.json`. The command hooks receive the
@@ -117,8 +118,9 @@ keeps the old hooks, and from 0.14.0 the first review says so.
 The reviewer: `commit_review: false` in `/plugin`, or `"hook": {"enabled": false}` in
 your user `policy.json`. The effort router: `effort_router: false` (its default),
 `JEV_HOOKS_ROUTER=0`, or `"enabled": false` in your user or the project's
-`router.json` ([more](router.md#switches)). The skills run only when asked, whatever
-`commit_review` says. `JEV_HOOKS_DISABLE=1` turns off everything: the reviewer, the
-skills (they answer that the plugin is off), the guard and the router. If you also
+`router.json` ([more](router.md#switches)). The status line: `status_line: false`. The
+skills run only when asked, whatever `commit_review` says. `JEV_HOOKS_DISABLE=1` turns
+off everything: the reviewer, the skills (they answer that the plugin is off), the
+guard, the router and the status line. If you also
 run Anthropic's security-guidance plugin, it reviews `git commit` too: keep both, or
 switch one off.
