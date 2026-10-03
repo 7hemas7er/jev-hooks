@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.13.0 — 2026-10-03
+
+No injection escalation on documentation, and the real-commit counts grow to 66 commits
+of three other repositories.
+
 ### Changed
 
 - `injection_risk` no longer escalates a documentation-only commit: three Markdown files
