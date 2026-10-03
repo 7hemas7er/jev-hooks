@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.14.0 — 2026-10-03
+
+A session running an older version than the installed one now says so, once.
+
 ### Added
 
 - A session that still runs an older version than the one installed says so, once:
