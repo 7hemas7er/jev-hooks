@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.15.0 — 2026-10-03
+
+A status line under the prompt: the version the session runs, a newer one installed,
+and the last commit review.
+
 ### Added
 
 - A status line under the prompt, on by default where function hooks are on (the
