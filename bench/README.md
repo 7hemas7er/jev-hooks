@@ -98,10 +98,14 @@ question.
 from the diff. Title and description matter only for the two global questions.
 
 **Application code** here means `app/`, `src/`, `lib/`, `routes/`,
-`resources/views/`, the configuration read at run time (`config/*.php`,
-`settings.py`) and migrations. It does **not** include tests, fixtures, factories,
-development seeders, release scripts, CI, a development `docker-compose.yml`, linter
-configuration and documentation.
+`resources/views/`, the stylesheets and front-end scripts the application serves
+wherever they sit (`resources/css/`, `resources/js/`, `public/`), the configuration
+read at run time (`config/*.php`, `settings.py`) and migrations. It does **not**
+include tests, fixtures, factories, development seeders, release scripts, CI, a
+development `docker-compose.yml`, linter configuration and documentation. A stylesheet
+counts like a view: the program applies it. That was settled on 2026-10-03, when real
+commits had a stylesheet under `src/` counted and one under `resources/css/` not; no
+row of the bench sets touches a stylesheet, so no bench label changed.
 
 ### hardcoded_secret — hardcoded secret
 

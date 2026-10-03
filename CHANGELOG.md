@@ -7,11 +7,16 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ### Changed
 
-- `docs/evaluation.md`: the set of real commits from other repositories grows to 60
-  commits of three repositories. With this version's rules it shows 5 false
-  escalations: 4 on `hardcoded_secret` and the first on `weakens_tests` outside this
-  repository, whose second reading at 0.15 sits below one of the holdout's positives
-  (0.179), so its 0.10 stays.
+- `docs/evaluation.md`: the set of real commits from other repositories grows to 66
+  commits of three repositories. With this version's rules it shows 6 false
+  escalations: 4 on `hardcoded_secret`, and the first on `weakens_tests` and on
+  `injection_risk` outside this repository. Neither of those two thresholds moves:
+  each false alarm sits among bench positives (a second reading at 0.15 against a
+  positive at 0.179; 0.997 against a holdout positive at 0.994). On 110 real commits
+  0.12.0's `hardcoded_secret` threshold of 0.15 removes 4 of the 10 escalations 0.10
+  raised.
+- `bench/README.md`: a stylesheet counts as application code wherever it sits, like a
+  view. No bench row touches one, so no bench label changed.
 
 ## 0.12.0 — 2026-10-03
 
