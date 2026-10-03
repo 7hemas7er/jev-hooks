@@ -83,7 +83,7 @@ are in `bench/results/`.
 | Question | Form sent | AUROC dev | AUROC holdout | Rule in `policy.json` | dev TPR · FPR | holdout TPR · FPR |
 |---|---|--:|--:|---|---|---|
 | hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.15 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.91 (10/11) · 0.009 (1/110) |
-| injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
+| injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate, unless docs only | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
 | touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate, unless docs only | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
 | weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.10 | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.037 (4/109) |
 | breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.057 (6/105) |

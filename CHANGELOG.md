@@ -7,6 +7,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ### Changed
 
+- `injection_risk` no longer escalates a documentation-only commit: three Markdown files
+  that described a front-end script scored 0.996 live, while an injection needs code the
+  program runs. The bench numbers are the same with and without it. `hardcoded_secret`
+  is now the only escalating rule that still applies to documentation: a key pasted
+  into a README is a leak.
 - `docs/evaluation.md`: the set of real commits from other repositories grows to 66
   commits of three repositories. With this version's rules it shows 6 false
   escalations: 4 on `hardcoded_secret`, and the first on `weakens_tests` and on

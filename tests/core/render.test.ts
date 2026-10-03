@@ -389,7 +389,7 @@ test('explain: a choice with a value shows the value, the band and the calibrati
   const pr: Profile = { name: 'test', match: {}, calibrated: false, noul: { a: 0.5, b: 0 }, choice: { t: 3 } }
   const s = renderExplanation('injection_risk', c, { profile: pr, mode: 'client', origin: '--profile' })
   assert.match(s, /type choice · scope chunk · critical · asked of the model · value 1 − p\(none\)/)
-  assert.match(s, /injection_risk ≥ \d\.\d\d {2}→ escalation to Claude/)
+  assert.match(s, /injection_risk ≥ \d\.\d\d unless docs_only ≥ 0\.50 {2}→ escalation to Claude/)
   assert.match(s, /above the threshold the question goes to Claude, without a band/)
   assert.match(s, /calibrator: per type \(noul: a = 0\.5, b = 0, on the logit of 1 − p\(none\)\)/)
   const sha = questionHash(wireQuestion(ch.defs.injection_risk))

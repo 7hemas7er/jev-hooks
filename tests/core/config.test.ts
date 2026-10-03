@@ -337,7 +337,7 @@ test('policy.json: a choice with a value enters the rules, on the [0, 1] scale, 
   const p = valueOf(validatePolicy(POLICY, c, 'policy.json'))
   const inFile = POLICY.lanes[2].rules[1]
   assert.equal(inFile.check, 'injection_risk')
-  assert.deepEqual(p.lanes[2].rules.find((r) => r.check === 'injection_risk'), { check: 'injection_risk', op: 'gte', value: inFile.value, action: 'escalation' })
+  assert.deepEqual(p.lanes[2].rules.find((r) => r.check === 'injection_risk'), { check: 'injection_risk', op: 'gte', value: inFile.value, action: 'escalation', unless: [{ check: 'docs_only', op: 'gte', value: 0.5 }] })
   const outside = structuredClone(POLICY)
   outside.lanes[2].rules[1].value = 1.5
   const ps = problems(validatePolicy(outside, c, 'policy.json'))
@@ -569,7 +569,6 @@ test('user policy: it is the base and applies in full, even to loosen ("open a J
 // The plugin's thresholds, read from the file: the overlay tests stay true when the
 // calibration fit moves them.
 const SECRET_THRESHOLD: number = POLICY.lanes[2].rules[0].value
-const INJECTION_THRESHOLD: number = POLICY.lanes[2].rules[1].value
 const TEST_THRESHOLD: number = POLICY.lanes[2].rules[7].value
 
 test('project: a looser threshold is ignored with a note', () => {
@@ -616,10 +615,11 @@ test('project: "action" can be added, not removed', () => {
 })
 
 test('project: adding an unless to an existing rule loosens it and is ignored', () => {
+  // hardcoded_secret's rule has no unless in the plugin: a key in a README is a leak
   const r = valueOf(composeConfig(layers({ project: project({ lanes: [{ name: 'NITS', rules: [
-    { check: 'injection_risk', op: 'gte', value: INJECTION_THRESHOLD, unless: { check: 'docs_only', op: 'gte', value: 0.5 } },
+    { check: 'hardcoded_secret', op: 'gte', value: SECRET_THRESHOLD, unless: { check: 'docs_only', op: 'gte', value: 0.5 } },
   ] }] }) })))
-  assert.deepEqual(rule(r.policy, 'NITS', 'injection_risk'), [{ check: 'injection_risk', op: 'gte', value: INJECTION_THRESHOLD, action: 'escalation' }])
+  assert.deepEqual(rule(r.policy, 'NITS', 'hardcoded_secret'), [{ check: 'hardcoded_secret', op: 'gte', value: SECRET_THRESHOLD, action: 'escalation' }])
   assert.ok(r.warnings.some((a) => a.includes('/lanes/0/rules/0: field ignored')))
 })
 

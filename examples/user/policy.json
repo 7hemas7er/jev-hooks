@@ -10,7 +10,8 @@
       { "check": "hardcoded_secret", "op": "gte", "value": 0.95, "action": "escalation",
         "_why": "Demo threshold: the plugin's is lower (see the _why of the same rule in config/policy.json). The secret in secret.diff scores 0.874: with 0.95 it stays below, and the question does not go to Claude (MERGE)." },
       { "check": "injection_risk",   "op": "gte", "value": 0.99, "action": "escalation",
-        "_why": "Choice c_scelta, 1 − P(none): negatives reach above 0.99, which is why the threshold is this high. Dev: TPR 1.00 (8/8), FPR 0.036 (4/110), with the four false alarms between 0.995 and 0.997 and the positives above 0.998: going higher would mean chasing the dev set. Holdout: TPR 0.83 (10/12, two positives missed at 0.960 and 0.989), FPR 0.064 (7/109)." },
+        "unless": { "check": "docs_only", "op": "gte", "value": 0.5 },
+        "_why": "Choice c_scelta, 1 − P(none): negatives reach above 0.99, which is why the threshold is this high. Dev: TPR 1.00 (8/8), FPR 0.036 (4/110), with the four false alarms between 0.995 and 0.997 and the positives above 0.998: going higher would mean chasing the dev set. Holdout: TPR 0.83 (10/12, two positives missed at 0.960 and 0.989), FPR 0.064 (7/109). The unless on docs_only came from live use (2026-10-03): a commit of three Markdown files that described a front-end script scored 0.996 and was escalated, while an injection needs code the program runs. The bench numbers are the same with and without it. A real commit of a front-end script at 0.997, with every innerHTML value escaped or numeric, stays escalated: 0.998 would keep every dev positive but lose the holdout's positive at 0.994." },
       { "check": "weakens_tests",    "op": "gte", "value": 0.5, "action": "escalation",
         "unless": [
           { "check": "docs_only", "op": "gte", "value": 0.5 },
