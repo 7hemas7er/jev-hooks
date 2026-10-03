@@ -109,7 +109,8 @@ release that raises the version, and only when you ask for it:
 /plugin update jev-hooks@7hemas7er-jev-hooks
 ```
 
-Then start a new session: the open one keeps the old hooks.
+Then run `/reload-plugins` in every open session, or start a new one: an open session
+keeps the old hooks, and from 0.14.0 the first review says so.
 
 ## Turning it off
 

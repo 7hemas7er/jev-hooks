@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  loadConfig, loadMaskMap, userConfigDir, xdgStateDir, describeModifiedRules, readKeyFile, displayPath,
+  loadConfig, loadMaskMap, userConfigDir, xdgStateDir, describeModifiedRules, readKeyFile, displayPath, newerInstalledVersion,
 } from '../../src/node/file-config.ts'
 import type { LoadedConfig } from '../../src/node/file-config.ts'
 import type { Origin, Policy } from '../../src/core/types.ts'
@@ -274,5 +274,40 @@ test('modified rules: only the configuration files are named, the others are cou
     }
   } finally {
     r.close()
+  }
+})
+
+// ─── A newer version in the plugin cache ──────────────────────────────────────
+
+test('newerInstalledVersion: the highest newer version next to the running one, with its manifest', () => {
+  const t = tempDir()
+  try {
+    const plugin = join(t.dir, 'cache', 'market', 'jev-hooks')
+    const version = (name: string, manifest: string | null = name): string => {
+      const d = join(plugin, name)
+      mkdirSync(join(d, '.claude-plugin'), { recursive: true })
+      if (manifest !== null) writeFileSync(join(d, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'jev-hooks', version: manifest }))
+      return d
+    }
+    const running = version('0.11.0')
+    version('0.9.0')
+    version('0.10.0')
+    assert.equal(newerInstalledVersion(running), null, 'only older versions around')
+    version('0.12.0')
+    version('0.13.0')
+    // compared as numbers, not as text: 0.13.0 < 0.100.0
+    version('0.100.0', null)          // no manifest: a stray folder
+    version('1.0.0', '0.1.0')         // a manifest that does not match the folder
+    mkdirSync(join(plugin, '2.0.0-beta.1'))
+    mkdirSync(join(plugin, 'notes'))
+    assert.equal(newerInstalledVersion(running), '0.13.0')
+    assert.equal(newerInstalledVersion(`${running}/`), '0.13.0', 'a trailing slash in CLAUDE_PLUGIN_ROOT')
+    version('0.100.0')
+    assert.equal(newerInstalledVersion(running), '0.100.0')
+    // a --plugin-dir checkout: the root is not a version directory
+    assert.equal(newerInstalledVersion(ROOT), null)
+    assert.equal(newerInstalledVersion(join(t.dir, 'missing', '0.1.0')), null)
+  } finally {
+    t.close()
   }
 })

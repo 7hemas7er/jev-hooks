@@ -42,7 +42,7 @@ import {
   prunePending, recordFingerprint, logLine, writeCache, writePending, markEscalationDenied, sha256, removePending,
 } from '../node/data.ts'
 import { backendFrom, runReview, backendSources } from '../node/run.ts'
-import { loadConfig, loadMaskMap, describeModifiedRules, readKeyFile, displayPath, pluginVersion } from '../node/file-config.ts'
+import { loadConfig, loadMaskMap, describeModifiedRules, readKeyFile, displayPath, pluginVersion, newerInstalledVersion } from '../node/file-config.ts'
 import type { LoadedConfig } from '../node/file-config.ts'
 import { git, readSource, repoRoot } from '../node/git.ts'
 import { nodeClock, nodeTransport } from '../node/transport.ts'
@@ -98,6 +98,14 @@ function emit(u: HookOutput, ctx: HookContext, maskMap: readonly MaskPair[], eve
 }
 
 // ─── Small pieces ─────────────────────────────────────────────────────────────
+
+// Once per session, with a commit review, /jev-review or /jev-status: the session still
+// runs an older version than the one installed, so the newer one's rules do not apply.
+function staleNotice(ctx: HookContext, dataDir: string, session: string): string[] {
+  const newer = newerInstalledVersion(ctx.pluginRoot)
+  if (newer === null || !firstNotice(dataDir, session, 'stale_version')) return []
+  return [`${PREFIX}jev-hooks ${newer} is installed, but this session still runs ${pluginVersion(ctx.pluginRoot)}: /reload-plugins loads it`]
+}
 
 function parseInput(text: string): Record<string, unknown> | null {
   try {
@@ -491,7 +499,7 @@ async function commit(ctx: HookContext, dataDir: string, start: number): Promise
       diff_sha: e.result.config_hashes.diff ?? '', escalation: e.result.escalation.map(itemId), ts: localIso(), dir: e.dir,
     })
   }
-  emit(selection.u, ctx, maskMap)
+  emit({ ...selection.u, messages: [...selection.u.messages, ...staleNotice(ctx, dataDir, session)] }, ctx, maskMap)
 }
 
 // ─── post-commit event ────────────────────────────────────────────────────────
@@ -547,7 +555,7 @@ async function onDemand(ctx: HookContext, dataDir: string, start: number, event:
   }
   const text = typeof args === 'string' ? args : ''
   const context = command === 'review' ? await reviewContext(run, text) : await statusText(run, text)
-  emit({ context, messages: [] }, ctx, loadMaskMap(ctx.env).maskMap ?? [], event === 'expand' ? 'UserPromptExpansion' : 'PreToolUse')
+  emit({ context, messages: staleNotice(ctx, dataDir, run.session) }, ctx, loadMaskMap(ctx.env).maskMap ?? [], event === 'expand' ? 'UserPromptExpansion' : 'PreToolUse')
 }
 
 // ─── guard event ──────────────────────────────────────────────────────────────

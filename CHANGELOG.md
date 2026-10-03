@@ -5,6 +5,15 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- A session that still runs an older version than the one installed says so, once:
+  the first commit review, `/jev-review` or `/jev-status` adds `jev-hooks X is installed,
+  but this session still runs Y: /reload-plugins loads it`. Between 2026-10-01 and
+  2026-10-03, 85 of 102 reviews ran a version older than the installed one, so the
+  rule changes of 0.11.0 to 0.13.0 mostly had not applied. The hook looks only at the
+  version folders beside its own in Claude Code's plugin cache.
+
 ## 0.13.0 — 2026-10-03
 
 No injection escalation on documentation, and the real-commit counts grow to 66 commits

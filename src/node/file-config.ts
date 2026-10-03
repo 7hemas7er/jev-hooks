@@ -10,9 +10,9 @@
 //   not silently loosen the rules. The user runs the CLI, and it uses the working tree
 //   with a note.
 // The guardrail mask map and the key file are read here too.
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, statSync } from 'node:fs'
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { keyFromFileText } from '../core/backend.ts'
 import { composeConfig } from '../core/config.ts'
 import { parseMaskMap } from '../core/mask.ts'
@@ -60,6 +60,37 @@ export function pluginVersion(root: string): string {
     return typeof v === 'string' ? v : '?'
   } catch {
     return '?'
+  }
+}
+
+// A newer version of this plugin next to the running one in Claude Code's plugin cache
+// (<cache>/<marketplace>/<plugin>/<version>/). /plugin update downloads it, but a running
+// session keeps the version it loaded until /reload-plugins: on 2026-10-03, 85 of the
+// 102 reviews since 2026-10-01 had run a version older than the installed one. Null when the root is not a version directory (a --plugin-dir checkout), when
+// nothing newer is there, or on any error: it only adds a notice.
+export function newerInstalledVersion(root: string): string | null {
+  const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/
+  const parse = (v: string): number[] | null => {
+    const m = SEMVER.exec(v)
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+  }
+  const newer = (a: number[], b: number[]): boolean => a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2]
+  try {
+    const dir = root.replace(/[\\/]+$/, '')
+    if (!SEMVER.test(basename(dir))) return null
+    const current = parse(pluginVersion(dir))
+    if (current === null) return null
+    let best: { v: string; n: number[] } | null = null
+    for (const name of readdirSync(dirname(dir))) {
+      const n = parse(name)
+      if (n === null || !newer(n, best?.n ?? current)) continue
+      // a directory that holds that version's manifest, not a stray folder
+      if (pluginVersion(join(dirname(dir), name)) !== name) continue
+      best = { v: name, n }
+    }
+    return best?.v ?? null
+  } catch {
+    return null
   }
 }
 

@@ -87,4 +87,8 @@ comes back as data for Claude to explain.
 A running Claude Code keeps the plugin version it loaded until `/reload-plugins` or a
 restart, also after `/plugin update` and `/clear`: the
 review log records it in each line (`plugin_version`), and `/jev-status` and
-`jev-review status` show it first.
+`jev-review status` show it first. From 0.14.0, when a newer version sits next to the
+running one in Claude Code's plugin cache, the first commit review, `/jev-review` or
+`/jev-status` of the session adds one line to the user, once: `jev-hooks 0.15.0 is
+installed, but this session still runs 0.14.0: /reload-plugins loads it`. It looks only
+at the version folders beside its own, and says nothing for a `--plugin-dir` checkout.

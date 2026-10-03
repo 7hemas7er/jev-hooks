@@ -506,6 +506,32 @@ test('MERGE → one systemMessage line, nothing else', async () => {
   }
 })
 
+test('a newer version next to the running one in the plugin cache → one notice per session, after the review line', async () => {
+  // <cache>/<marketplace>/<plugin>/<version>: the running version is this checkout
+  const plugin = newDir('cache')
+  symlinkSync(ROOT, join(plugin, VERSION))
+  mkdirSync(join(plugin, '99.0.0', '.claude-plugin'), { recursive: true })
+  writeFileSync(join(plugin, '99.0.0', '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'jev-hooks', version: '99.0.0' }))
+  const pr = trial({ root: join(plugin, VERSION) })
+  try {
+    const notice = `[jev-review] jev-hooks 99.0.0 is installed, but this session still runs ${VERSION}: /reload-plugins loads it`
+    pr.r.write('src/sum.py', 'def add(a, b):\n    return a + b\n')
+    pr.r.git('add', '-A')
+    const first = await commit(pr, 'git commit -m "Add sum"')
+    const lines = (first.json?.systemMessage ?? '').split('\n')
+    assert.match(lines[0], /^\[jev-review\] MERGE/)
+    assert.equal(lines[1], notice)
+    // the same session: the review line alone
+    const again = await commit(pr, 'git commit -m "Add sum"')
+    assert.doesNotMatch(again.json?.systemMessage ?? '', /is installed/)
+    // another session: the notice again
+    const other = await commit(pr, 'git commit -m "Add sum"', { session: 'other-session' })
+    assert.equal((other.json?.systemMessage ?? '').split('\n')[1], notice)
+  } finally {
+    close(pr)
+  }
+})
+
 test('a command that is not a commit, uncertain, empty diff, hook turned off → no output', async () => {
   const pr = trial()
   try {
