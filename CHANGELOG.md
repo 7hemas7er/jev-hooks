@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.12.0 — 2026-10-03
+
+Fewer false alarms on real commits, measured on 36 commits of two more repositories:
+`hardcoded_secret` escalates from 0.15, and `debug_leftovers` skips documentation.
+
 ### Changed
 
 - `hardcoded_secret` escalates from 0.15 instead of 0.10. On both bench sets no
