@@ -82,13 +82,13 @@ are in `bench/results/`.
 
 | Question | Form sent | AUROC dev | AUROC holdout | Rule in `policy.json` | dev TPR · FPR | holdout TPR · FPR |
 |---|---|--:|--:|---|---|---|
-| hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.10 → escalate | 0.78 (7/9) · 0.028 (3/109) | 0.91 (10/11) · 0.027 (3/110) |
+| hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.15 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.91 (10/11) · 0.009 (1/110) |
 | injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
 | touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate, unless docs only | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
 | weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.10 | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.037 (4/109) |
 | breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.057 (6/105) |
 | data_migration | choice, 1 − P(none) | 1.000 | 0.992 | ≥ 0.76, note | 1.00 (7/7) · 0 (0/111) | 1.00 (10/10) · 0.027 (3/111) |
-| debug_leftovers | noul | 0.994 | 0.966 | ≥ 0.40, note | 0.88 (7/8) · 0.027 (3/110) | 0.91 (10/11) · 0.036 (4/110) |
+| debug_leftovers | noul | 0.994 | 0.966 | ≥ 0.40 unless docs only, note | 0.88 (7/8) · 0.027 (3/110) | 0.91 (10/11) · 0.036 (4/110) |
 | adds_tests (sent as "missing tests?") | choice, 1 − P(none) | 0.963 | 0.937 | ≤ 0.30 unless docs only, note | 0.74 (57/77) · 0.024 (1/41) | 0.83 (50/60) · 0.066 (4/61) |
 | description_matches | noul | 0.425 | 0.608 | none (informational) | — | — |
 
@@ -235,7 +235,7 @@ unchanged since):
 | Question | Threshold | False alarms | Positives caught |
 |---|---:|---:|---:|
 | `weakens_tests` | 0.50 | 11 of 44 | none in the set |
-| `hardcoded_secret` | 0.10 | 3 of 44 | none in the set |
+| `hardcoded_secret` | 0.15 | 2 of 44 | none in the set |
 | `touches_auth` | 0.70 | 3 of 43 | 0 of 1 |
 | `adds_tests` (missing tests) | 0.70 | 3 of 43 | 1 of 1 |
 | `injection_risk` | 0.99 | 0 of 42 | 0 of 2 |
@@ -244,6 +244,38 @@ Those reviews ran before `weakens_expected` existed, so the `weakens_tests` row 
 rule without its second reading. The two `injection_risk` positives are literal ones
 (environment variables in a fetched URL and in an executed path), the `touches_auth`
 one an example Caddy configuration.
+
+A second set (2026-10-01): 36 commits of two other repositories of the maintainer, in
+PHP and in TypeScript, reviewed by 0.9.0 and 0.10.0 with the same question texts. They
+were joined with the log in the same way, and labelled by two agents with the
+definitions above, who agreed on all 324 labels. The labelled rows stay out of this
+repository: those repositories are private. With the rules of this version:
+
+| Question | Threshold | False alarms | Positives caught |
+|---|---:|---:|---:|
+| `hardcoded_secret` | 0.15 | 4 of 36 | none in the set |
+| `weakens_tests` | 0.50, second reading | 0 of 36 | none in the set |
+| `touches_auth` | 0.70 | 0 of 35 | 1 of 1 |
+| `injection_risk` | 0.99 | 0 of 35 | 0 of 1 |
+| `adds_tests` (missing tests) | 0.70 | 3 of 16 | 13 of 20 |
+| `debug_leftovers` | 0.40 | 0 of 36 | none in the set |
+
+The four `hardcoded_secret` escalations, at 0.16 to 0.54, all come from the PHP
+repository, one of them on planning notes in Markdown. They are the noise that remains:
+across the 80 commits of the two sets, 6 escalations on that question and no secret.
+Moving its threshold from 0.10 to 0.15 removed one of them, with the bench's positives
+unchanged. That move looked at both bench sets, so the holdout no longer measures that
+threshold blind. Going higher would cost the holdout's positives at 0.199 and 0.245. The
+`debug_leftovers` note fired at 0.81 on those planning notes, which is why it now skips
+documentation-only commits. The `adds_tests` note misses 7 of its 20 positives, mostly
+early commits that add whole pages of a new application without a test, scored between
+0.03 and 0.21. The `injection_risk` positive is a literal one, a file name joined into a
+path on an in-memory file system. The set's single `breaks_api` and `data_migration`
+positive, one commit that changes an exported interface and converts stored data with no
+way back, scored 0.34 and 0.37, below both thresholds. The path list of application code
+above makes a stylesheet under `src/` application code and one under `resources/css/`
+not, and the labels follow it. There are still too few positives on the questions that
+escalate for a fit from real commits.
 
 ## Planned
 

@@ -76,6 +76,8 @@ const CASES: [string, Record<string, number>, string][] = [
     adds_tests: 0, docs_only: 0,
   }, 'NITS'],
   ['debug leftovers', { debug_leftovers: thr('debug_leftovers') }, 'NITS'],
+  ['debug leftovers, docs only: the unless cancels it', { debug_leftovers: 1, docs_only: 1 }, 'MERGE'],
+  ['touches_auth high, docs only: the unless cancels it', { touches_auth: 1, docs_only: 1 }, 'MERGE'],
   // description_matches is informative only: no value takes it to a lane
   ['description does not match: informative, outside the rules', { description_matches: 0.01 }, 'MERGE'],
   ['tests missing, not docs only', { adds_tests: 0.01, docs_only: 0 }, 'NITS'],

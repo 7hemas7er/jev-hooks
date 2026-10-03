@@ -327,8 +327,8 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
 
   const modified = renderExplanation('hardcoded_secret', c, { profile: { ...calibrated, per_question: { hardcoded_secret: { sha256: 'other', a: 0.29 } } }, mode: 'client', origin: 'x' })
   // the values then go through the profile's noul block, and so does the policy threshold:
-  // σ(0.31 · logit(0.10) − 0.2) = 0.29
-  assert.match(modified, /effective threshold 0\.29 · source: policy .* threshold of profile spark-calibrated ignored: question changed after the calibration fit/)
+  // σ(0.31 · logit(0.15) − 0.2) = 0.32
+  assert.match(modified, /effective threshold 0\.32 · source: policy .* threshold of profile spark-calibrated ignored: question changed after the calibration fit/)
   assert.match(modified, /per-question entry ignored/)
 
   const uncalibrated = renderExplanation('hardcoded_secret', c, { profile: { ...calibrated, calibrated: false }, mode: 'client', origin: 'x' })

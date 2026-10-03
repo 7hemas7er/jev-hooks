@@ -189,8 +189,10 @@ test('typed /jev-hooks:jev-review on staged changes → the review as UserPrompt
 test('Skill tool with --working, a reference, a .diff in the repo → PreToolUse context, never a decision', async () => {
   const pr = trial()
   try {
-    // --working is git diff HEAD: a tracked file, as an untracked one is not in it
-    pr.r.write('README.md', 'project\nconsole.log("x")\n')
+    // --working is git diff HEAD: a staged file, as an untracked one is not in it; code,
+    // because debug_leftovers skips a documentation-only diff
+    pr.r.write('src/app.js', 'console.log("x")\n')
+    pr.r.git('add', 'src/app.js')
     const working = await invoked(pr, 'jev-hooks:jev-review', '--working')
     onlyContext(working, 'PreToolUse')
     assert.equal(block(working, 'jev-review').lane, 'NITS')

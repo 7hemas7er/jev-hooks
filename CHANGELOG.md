@@ -5,6 +5,22 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `hardcoded_secret` escalates from 0.15 instead of 0.10. On both bench sets no
+  positive lies between the two and two false alarms do: the same positives are caught,
+  and the false alarms drop from 3 to 1 on each set. On 80 reviewed commits of three
+  repositories, none holding a secret, the escalations drop from 7 to 6. The rest sit
+  between 0.16 and 0.54, where the holdout's positives at 0.199 and 0.245 are.
+- `debug_leftovers` no longer notes a documentation-only commit: Markdown planning
+  notes scored 0.81 live, while a debug leftover lives in application code. The bench
+  numbers are the same with and without it.
+
+### Added
+
+- `docs/evaluation.md`: false alarms of the current rules on 36 commits of two other
+  repositories, labelled by the bench definitions. Only the counts are published.
+
 ## 0.11.0 — 2026-10-01
 
 Fewer empty notes and escalations on real commits, measured on this repository's own
