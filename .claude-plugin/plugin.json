@@ -13,6 +13,7 @@
     "router_api_key":   { "type": "string",  "title": "Router API key", "description": "Bearer for router_url. Empty: api_key or the key file, only when router_url is on review_url's host", "default": "", "sensitive": true },
     "model":            { "type": "string",  "title": "Model", "description": "jev-latest also works with rizzo-flow; clm-latest for CLM", "default": "jev-latest" },
     "commit_review":    { "type": "boolean", "title": "Review before commit", "description": "Reviews the diff when Claude runs git commit", "default": true },
-    "effort_router":    { "type": "boolean", "title": "Effort router", "description": "Opt-in. Lowers the per-turn effort from what your prompt asks. Needs CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1, Opus 5.5, Fable 5.1 or Sonnet 5.5 and the per-turn-control beta on the account: without the beta every effort change clears the prompt cache", "default": false }
+    "effort_router":    { "type": "boolean", "title": "Effort router", "description": "Opt-in. Lowers the per-turn effort from what your prompt asks. Needs CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1, Opus 5.5, Fable 5.1 or Sonnet 5.5 and the per-turn-control beta on the account: without the beta every effort change clears the prompt cache", "default": false },
+    "status_line":      { "type": "boolean", "title": "Status line", "description": "One line under the prompt: the jev-hooks version this session runs, a newer one installed (then /reload-plugins), and the outcome of the last commit review. Reads only the plugin's folder and its review log. Needs function hooks (CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1)", "default": true }
   }
 }

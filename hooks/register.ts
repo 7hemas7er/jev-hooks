@@ -50,6 +50,8 @@ import {
 } from '../src/core/router.ts'
 import type { Classification, GuardState, GuardStep, RouterContext, SessionEffort } from '../src/core/router.ts'
 import type { Effort, RouterConfig } from '../src/core/types.ts'
+import { dataFolderOf, joinStatus, lastReview, manifestVersion, mayCommit, newerVersions, statusText, versionFolder } from '../src/core/status-line.ts'
+import type { LastReview } from '../src/core/status-line.ts'
 
 type Effective = { cfg: RouterConfig | null; notes: string[] }
 // unreadable: the file is there but cannot be read (see readClassified)
@@ -78,11 +80,162 @@ function sameFiles(a: readonly ProjectFile[], b: readonly ProjectFile[]): boolea
     && a.every((f, i) => f.label === b[i].label && f.text === b[i].text && f.unreadable === b[i].unreadable)
 }
 
+// ─── The status line (status_line option) ─────────────────────────────────────
+//
+// One line per plugin: what src/core/status-line.ts writes, and after it the router's
+// text during a routed turn. These functions take `$` at the top level of this file,
+// where the scanner follows it; what $ they need is spelled out here, so that this file
+// names no engine type beyond Register. Each one fails quietly: a line that cannot be
+// computed stays as it was.
+type LineIo = {
+  plugin: { root: string }
+  env: { get(name: string): Promise<string | undefined> }
+  fs: {
+    list(path?: string): Promise<readonly { name: string }[]>
+    exists(path: string): Promise<boolean>
+    read(path: string): Promise<string>
+  }
+  session: { id(): Promise<string> }
+  ui: { status(text: string | undefined): void }
+}
+type Line = { running: string; session: string; log: string | null; newer: string | null; last: LastReview | null }
+type StatusUi = { line: Line | null; router: string | undefined }
+
+// The text for $.ui.status, with the router's part (undefined clears it) after the line.
+function shown(ui: StatusUi, router: string | undefined): string | undefined {
+  ui.router = router
+  return joinStatus(ui.line ? statusText(ui.line) : undefined, router)
+}
+
+// JEV_HOOKS_DISABLE=1 turns off the whole plugin, the line too: read at every update,
+// as the router reads it at every prompt. True when the line is off; it clears it then.
+async function lineOff($: LineIo, ui: StatusUi): Promise<boolean> {
+  if ((await $.env.get('JEV_HOOKS_DISABLE')) !== '1') return false
+  if (ui.line !== null) {
+    ui.line = null
+    $.ui.status(shown(ui, ui.router))
+  }
+  return true
+}
+
+// The running version from the cache folder's name (from plugin.json for a
+// --plugin-dir checkout), the session, and the log: CLAUDE_PLUGIN_DATA when the module
+// sees it, otherwise the data folder Claude Code names after the cache path.
+async function lineStart($: LineIo, ui: StatusUi): Promise<void> {
+  try {
+    if (await lineOff($, ui)) return
+    const root = $.plugin.root
+    let running = versionFolder(root)?.version ?? null
+    if (running === null) running = manifestVersion(await $.fs.read(`${trimSlashes(root)}/.claude-plugin/plugin.json`))
+    if (running === null) return
+    const session = await $.session.id()
+    const data = (await $.env.get('CLAUDE_PLUGIN_DATA')) || dataFolderOf(root)
+    const log = data ? `${trimSlashes(data)}/log.jsonl` : null
+    let last: LastReview | null = null
+    if (log !== null) {
+      try {
+        last = lastReview(await $.fs.read(log), session)
+      } catch {
+        // no log yet: no commit reviewed
+      }
+    }
+    ui.line = { running, session, log, newer: ui.line?.newer ?? null, last }
+    $.ui.status(shown(ui, ui.router))
+  } catch {
+    // the line stays as it was
+  }
+}
+
+// A newer version beside the running one: /plugin update downloads it, the session
+// keeps what it loaded. Started here too when session.start never reached the module.
+async function lineVersions($: LineIo, ui: StatusUi): Promise<void> {
+  try {
+    if (await lineOff($, ui)) return
+    if (ui.line === null) await lineStart($, ui)
+    const line = ui.line
+    const folder = versionFolder($.plugin.root)
+    if (line === null || folder === null) return
+    let newer: string | null = null
+    for (const v of newerVersions(folder.version, (await $.fs.list(folder.parent)).map((x) => x.name))) {
+      if (await $.fs.exists(`${folder.parent}/${v}/.claude-plugin/plugin.json`)) {
+        newer = v
+        break
+      }
+    }
+    if (newer === line.newer) return
+    line.newer = newer
+    $.ui.status(shown(ui, ui.router))
+  } catch {
+    // the line stays as it was
+  }
+}
+
+// After a Bash call that may hold a commit: the session's last review, again.
+async function lineAfterCommit($: LineIo, ui: StatusUi): Promise<void> {
+  try {
+    if (await lineOff($, ui)) return
+    const line = ui.line
+    if (line === null || line.log === null) return
+    const last = lastReview(await $.fs.read(line.log), line.session)
+    if (last === null) return
+    line.last = last
+    $.ui.status(shown(ui, ui.router))
+  } catch {
+    // the line stays as it was
+  }
+}
+
 export const register: Register = (on, options) => {
-  // The enable gate. Options are fixed for an activation (a change reloads the
-  // module), so with the router off nothing is registered and no prompt pays for a $
-  // call; effectiveRouterConfig checks the option a second time.
-  if (options.effort_router !== true) return
+  // The enable gates. Options are fixed for an activation (a change reloads the
+  // module): with both off nothing is registered, and with the router off no prompt pays
+  // for a $ call (the status line only listens to session.start, turn.start and Bash
+  // calls); effectiveRouterConfig checks the router's option a second time.
+  const lineOn = options.status_line !== false
+  const routerOn = options.effort_router === true
+  if (!lineOn && !routerOn) return
+
+  const ui: StatusUi = { line: null, router: undefined }
+  if (lineOn) {
+    on('session.start', async ($, e, next) => {
+      const r = await next(e)
+      await lineStart($, ui)
+      return r
+    })
+    // After the call: the commit hook has written its review to the log by then.
+    on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+      const ran = await next(e)
+      if (mayCommit(e.command)) await lineAfterCommit($, ui)
+      return ran
+    })
+  }
+  // One turn.start for both (the scanner takes one registration per event). The router:
+  // binding by text, the classification applies only to the turn its own prompt
+  // started. A prompt dropped beneath, one folded into a running turn, a turn started
+  // by a notification or a continuation (text "") never pick it up.
+  // The start time is read after the binding: a refused clock then costs only the
+  // guard's judgement of this turn, never its classification, and the binding is in
+  // place even if the engine sends the first step before this hook settles. turn.start
+  // is not on the path of every request, so it may await. The status line looks for a
+  // newer version after the turn started, so the turn never waits for it. The router's
+  // state below is declared only when the router is on: it is read only then.
+  on('turn.start', async ($, e, next) => {
+    const p = !routerOn || e.text === '' ? undefined : pending.find((x) => x.text === e.text)
+    if (p) {
+      pending = without(e.text)
+      const bound: { turnId: string; startedAt?: number; c?: Classification } = p.c ? { turnId: e.turnId, c: p.c } : { turnId: e.turnId }
+      turn = bound
+      try {
+        bound.startedAt = await $.clock.now()
+      } catch {
+        // no start time: this turn's first step is not judged, the reference stays
+      }
+    }
+    const r = await next(e)
+    if (lineOn) await lineVersions($, ui)
+    return r
+  })
+
+  if (!routerOn) return
 
   let cfg: RouterConfig | null = null
   // the files of the last prompt and what they gave: unchanged files are not validated
@@ -138,7 +291,7 @@ export const register: Register = (on, options) => {
     // A prompt typed or delivered during a turn (turnId set) leaves that turn's status
     // line alone: the turn still runs at the effort the line shows.
     const clearStatus = (): void => {
-      if (e.turnId === undefined) $.ui.status(undefined)
+      if (e.turnId === undefined) $.ui.status(shown(ui, undefined))
     }
     const problem = (line: string): void => {
       $.ui.log(line, { to: sink(line) })
@@ -149,7 +302,7 @@ export const register: Register = (on, options) => {
       if ((await $.env.get('JEV_HOOKS_ROUTER')) === '0' || (await $.env.get('JEV_HOOKS_DISABLE')) === '1') {
         cfg = null
         pending = []
-        $.ui.status(undefined)
+        $.ui.status(shown(ui, undefined))
         return
       }
       const home = await $.env.get('HOME')
@@ -237,7 +390,7 @@ export const register: Register = (on, options) => {
       cfg = c
       if (!c || !c.enabled) {
         pending = []
-        $.ui.status(undefined)
+        $.ui.status(shown(ui, undefined))
         return
       }
 
@@ -353,28 +506,6 @@ export const register: Register = (on, options) => {
     return r
   })
 
-  // Binding by text: the classification applies only to the turn its own prompt
-  // started. A prompt dropped beneath, one folded into a running turn, a turn started
-  // by a notification or a continuation (text "") never pick it up.
-  // The start time is read after the binding: a refused clock then costs only the
-  // guard's judgement of this turn, never its classification, and the binding is in
-  // place even if the engine sends the first step before this hook settles. turn.start
-  // is not on the path of every request, so it may await.
-  on('turn.start', async ($, e, next) => {
-    const p = e.text === '' ? undefined : pending.find((x) => x.text === e.text)
-    if (p) {
-      pending = without(e.text)
-      const bound: { turnId: string; startedAt?: number; c?: Classification } = p.c ? { turnId: e.turnId, c: p.c } : { turnId: e.turnId }
-      turn = bound
-      try {
-        bound.startedAt = await $.clock.now()
-      } catch {
-        // no start time: this turn's first step is not judged, the reference stays
-      }
-    }
-    return next(e)
-  })
-
   on('turn.step', async function* ($, e, next) {
     let arg = e
     try {
@@ -391,12 +522,12 @@ export const register: Register = (on, options) => {
             // the status before the line: if either fails the catch undoes the change,
             // and no transcript line may be left saying it was made; if only the line
             // fails, the catch takes the status back too
-            $.ui.status(statusLine(c, s, ctx))
+            $.ui.status(shown(ui, statusLine(c, s, ctx)))
             if (s.effort) $.ui.log(decisionLine(ctx, s))
             else $.ui.log(decisionLine(ctx, s), { to: 'debug' })
           } else {
             applied = { turnId: e.turnId, before: e.effort, after: level }
-            $.ui.status(undefined)
+            $.ui.status(shown(ui, undefined))
           }
         } else if (applied && applied.turnId === e.turnId && applied.after !== undefined
           && applied.after !== applied.before && e.effort === applied.before && modelAllowed(cfg, e.model)) {
@@ -419,7 +550,7 @@ export const register: Register = (on, options) => {
         // drops a refused ui call instead of throwing, so this path is defensive.)
         if (changed) {
           try {
-            $.ui.status(undefined)
+            $.ui.status(shown(ui, undefined))
           } catch {
             // refused as well: nothing more can be undone
           }
@@ -441,7 +572,7 @@ export const register: Register = (on, options) => {
         if (own && own.startedAt !== undefined) guardRefAt = own.startedAt
         if (out.verdict === 'tripped') {
           $.ui.log(guardLine(step, out.prefix ?? 0, g.trips))
-          $.ui.status('jev router: off for this session (effort changes cleared the prompt cache)')
+          $.ui.status(shown(ui, 'jev router: off for this session (effort changes cleared the prompt cache)'))
         } else if (out.verdict === 'suspect') {
           $.ui.log(`[jev-hooks] router: after an effort change the prompt cache served ${formatNumber(out.read ?? 0, 0)} of ${formatNumber(out.prefix ?? 0, 0)} tokens (${formatNumber(out.state.suspects, 0)} of ${formatNumber(g.trips, 0)} before the router turns off)`, { to: 'debug' })
         }

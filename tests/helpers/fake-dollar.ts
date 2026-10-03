@@ -13,6 +13,10 @@
 //   rejects as the engine words a deny, `jev-hooks: $.fs.read: <reason>` (seen in the
 //   2.1.283 kit). $.fs.exists is a stat, as the engine's: a path in `failing` does not
 //   exist, since its stat fails too.
+// - $.plugin.root is pluginRoot ('/plugin', not a version folder, by default),
+//   $.fs.list answers the names planted in dirs, $.session.id sessionId: the status line
+//   reads them. sessionStart() and bash(command) raise session.start and a Bash
+//   tool.call, each after the engine's own part.
 // - $.session.repo answers repoRoot, $.session.cwd the session's directory (cwd,
 //   repoRoot by default). A `.git` planted in files is what a walk up to the checkout's
 //   top level finds: a file in a linked worktree, a directory in the main one, which
@@ -78,10 +82,13 @@ export interface WorldOptions {
   cwd?: string
   now?: number
   broken?: string[]        // calls ('env.get', 'ui.log', 'turn.step:ui.status', …) the engine refuses
+  pluginRoot?: string      // $.plugin.root: '/plugin' by default, a folder that is not a version
+  dirs?: Record<string, string[]>      // path → the names $.fs.list answers; any other path rejects ENOENT
+  sessionId?: string
 }
 
 type Hook = (...a: unknown[]) => unknown
-type Register = (on: (event: string, hook: Hook) => void, options: Record<string, unknown>) => unknown
+type Register = (on: (event: string, a: Hook | Record<string, unknown>, b?: Hook) => void, options: Record<string, unknown>) => unknown
 
 type Queued = { kind: 'answer'; a: HttpAnswer } | { kind: 'fail'; err: Error } | { kind: 'hold'; p: Promise<HttpResponse> }
 
@@ -104,6 +111,7 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   const hooks: Record<string, Hook> = Object.create(null)
   const env: Record<string, string> = { ...o.env }
   const files = new Map<string, string>(Object.entries(o.files ?? {}))
+  const dirs = new Map<string, string[]>(Object.entries(o.dirs ?? {}))
   const unreadable = new Set<string>(o.unreadable ?? [])
   const failing = new Map<string, string>(Object.entries(o.failing ?? {}))
   const denied = new Set<string>(o.denied ?? [])
@@ -160,7 +168,14 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
           rec('fs.exists', path)
           return !failing.has(path) && (files.has(path) || unreadable.has(path))
         },
+        list: async (path: string): Promise<{ name: string; kind: 'dir' }[]> => {
+          rec('fs.list', path)
+          const names = dirs.get(path)
+          if (names === undefined) throw hooksError(`jev-hooks: $.fs.list(${path}) failed: ENOENT`)
+          return names.map((name) => ({ name, kind: 'dir' }))
+        },
       },
+      plugin: { name: 'jev-hooks', root: o.pluginRoot ?? '/plugin' },
       session: {
         repo: async (): Promise<{ root: string; remote: string | null } | null> => {
           rec('session.repo')
@@ -169,6 +184,10 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
         cwd: async (): Promise<string> => {
           rec('session.cwd')
           return w.cwd
+        },
+        id: async (): Promise<string> => {
+          rec('session.id')
+          return o.sessionId ?? 'test-session'
         },
       },
       clock: {
@@ -225,9 +244,11 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   }
 
   const registered: string[] = []
-  register((event, hook) => {
+  // on(event, hook) or on(event, matcher, hook): a test drives tool.call with the tool
+  // its matcher names (the only matcher register.ts uses).
+  register((event, a, b) => {
     registered.push(event)
-    hooks[event] = hook
+    hooks[event] = (typeof a === 'function' ? a : b) as Hook
   }, Object.freeze({ ...o.options }))
 
   const signalOf = (s?: AbortSignal): AbortSignal => s ?? new AbortController().signal
@@ -243,6 +264,7 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
     get now(): number { return w.clock },
     setRepo(root: string | null): void { w.repoRoot = root },
     setCwd(cwd: string): void { w.cwd = cwd },
+    setDir(path: string, names: string[]): void { dirs.set(path, names) },
 
     // The next $.http.fetch resolves with a, rejects with err, or waits for the test.
     answer(a: HttpAnswer): void { queue.push({ kind: 'answer', a }) },
@@ -289,6 +311,22 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
     },
 
     start,
+
+    // session.start, after the engine's own start (next resolves at once).
+    async sessionStart(): Promise<void> {
+      const e = Object.freeze({ cwd: w.cwd, surface: 'terminal', interactive: true })
+      const next = Object.assign(async () => ({}), { signal: signalOf() })
+      if (hooks['session.start']) await hooks['session.start'](dollar('session.start'), e, next)
+    },
+
+    // A Bash tool call: beneath, the command runs and its commit hook has logged by the
+    // time next resolves, so the test plants the log line before calling this.
+    async bash(command: string): Promise<unknown> {
+      const e = Object.freeze({ tool: 'Bash', command })
+      const next = Object.assign(async () => ({ result: { stdout: '', stderr: '', interrupted: false } }), { signal: signalOf() })
+      const hook = hooks['tool.call']
+      return hook ? hook(dollar('tool.call'), e, next) : next()
+    },
 
     // turn.step, drained as the engine drains it; beneath records the request it was
     // asked to send and answers with the given usage.

@@ -652,7 +652,8 @@ test('hooks/register.ts in the vm context: prompt.submit reaches the fetch, turn
 
   const options = inside(g.ctx, { ...LOCAL_OPTIONS, router_url: '', api_key: '', router_api_key: '', commit_review: true })
   const out = JSON.parse(await drive(g.modules['hooks/register.ts'].register, options, routerReply('small_edit', { extra: {} })))
-  assert.deepEqual(out.registered, ['prompt.submit', 'turn.start', 'turn.step'])
+  // the status line is on by default: its hooks come first
+  assert.deepEqual(out.registered, ['session.start', 'tool.call', 'turn.start', 'prompt.submit', 'turn.step'])
   assert.deepEqual(out.entered, { text: 'rename x to y in src/a.ts' })
   // a ReferenceError inside the hook would be caught and logged as an error line: none is
   assert.deepEqual(out.seen.logs.filter((l: { to: string }) => l.to === 'transcript').map((l: { text: string }) => l.text), [

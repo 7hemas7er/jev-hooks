@@ -28,7 +28,8 @@ const MANIFEST = json('.claude-plugin/plugin.json')
 // the router on and the reviewer's instance on the LAN.
 const DEFAULTS: Record<string, unknown> = Object.fromEntries(Object.entries(MANIFEST.userConfig).map(([k, v]) => [k, (v as { default: unknown }).default]))
 const LOCAL_URL = 'http://192.168.1.50:8017'
-const OPTIONS: Record<string, unknown> = { ...DEFAULTS, review_url: LOCAL_URL, effort_router: true }
+// status_line off: these tests are about the router (the line has its own, at the end)
+const OPTIONS: Record<string, unknown> = { ...DEFAULTS, review_url: LOCAL_URL, effort_router: true, status_line: false }
 
 const HOME = '/home/test'
 const CONFIG = `${HOME}/.config/jev-hooks`
@@ -104,7 +105,7 @@ test('register: with effort_router anything but true nothing is registered, and 
     assert.deepEqual(w.calls, [])
     assert.equal(w.fetches.length, 0)
   }
-  assert.deepEqual(world().registered, ['prompt.submit', 'turn.start', 'turn.step'])
+  assert.deepEqual(world().registered, ['turn.start', 'prompt.submit', 'turn.step'])
 })
 
 test('kill switches: JEV_HOOKS_ROUTER=0 and JEV_HOOKS_DISABLE=1 send nothing, and are read again at every prompt', async () => {
@@ -1226,4 +1227,123 @@ test('turn.step calls nothing on $ but ui.log and ui.status, and turn.start only
   assert.deepEqual(w.calls.filter((c) => c.hook === 'turn.start'), [
     { hook: 'turn.start', call: 'clock.now' }, { hook: 'turn.start', call: 'clock.now' }, { hook: 'turn.start', call: 'clock.now' },
   ])
+})
+
+// ─── The status line (status_line option, on by default) ──────────────────────
+
+const PLUGINS = `${HOME}/.claude/plugins`
+const CACHE = `${PLUGINS}/cache/7hemas7er-jev-hooks/jev-hooks`
+const DATA = `${PLUGINS}/data/jev-hooks-7hemas7er-jev-hooks`
+const SESSION = 'a1b2c3d4-0000-4000-8000-000000000001'
+const review = (lane: string, escalation: string[] = [], session = SESSION): string =>
+  JSON.stringify({ ts: '2026-10-03T15:00:00+02:00', origin: 'hook', session, outcome: 'ok', lane, escalation })
+const manifest = (v: string): Record<string, string> => ({ [`${CACHE}/${v}/.claude-plugin/plugin.json`]: JSON.stringify({ name: 'jev-hooks', version: v }) })
+
+function lineWorld(o: WorldOptions & { router?: boolean } = {}): FakeClaude {
+  return world({
+    pluginRoot: `${CACHE}/0.15.0`, sessionId: SESSION, dirs: { [CACHE]: ['0.13.0', '0.14.0', '0.15.0'] },
+    ...o,
+    options: { status_line: true, effort_router: o.router === true, ...o.options },
+    files: { ...manifest('0.13.0'), ...manifest('0.14.0'), ...manifest('0.15.0'), ...o.files },
+  })
+}
+
+test('status line: on by default, alone it hooks only session.start, Bash calls and turn.start, and never a backend', async () => {
+  const w = lineWorld({ options: { status_line: DEFAULTS.status_line } })
+  assert.equal(DEFAULTS.status_line, true)
+  assert.deepEqual(w.registered, ['session.start', 'tool.call', 'turn.start'])
+  await w.sessionStart()
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · no commit reviewed yet')
+  w.answer(reply('small_edit'))
+  assert.equal(await turn(w, 'rename x to y in src/a.ts', 't1'), 'high')
+  assert.equal(w.fetches.length, 0)
+  assert.equal(w.envReads.includes('JEV_HOOKS_KEY'), false)
+})
+
+test('status line: the session\'s last review from the log, read again only after a Bash call that may commit', async () => {
+  const w = lineWorld({ files: { [`${DATA}/log.jsonl`]: [review('MERGE'), review('BLOCK', [], 'another-session'), ''].join('\n') } })
+  await w.sessionStart()
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · last commit MERGE')
+  // the commit hook logged its review beneath the Bash call
+  w.files.set(`${DATA}/log.jsonl`, [review('MERGE'), review('NITS', ['hardcoded_secret', 'weakens_tests']), ''].join('\n'))
+  const reads = (): number => w.calls.filter((c) => c.call === 'fs.read' && c.arg === `${DATA}/log.jsonl`).length
+  const before = reads()
+  await w.bash('ls -la')
+  assert.equal(reads(), before)
+  await w.bash('git commit -m "Add sum"')
+  assert.equal(reads(), before + 1)
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · last commit NITS, escalated hardcoded_secret, weakens_tests')
+})
+
+test('status line: a newer version with its manifest beside the running one, checked at every turn start', async () => {
+  const w = lineWorld()
+  await w.sessionStart()
+  await w.start('first prompt', 't1')
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · no commit reviewed yet')
+  // /plugin update downloads 0.16.0; a folder without a manifest is not a version
+  w.files.set(`${CACHE}/0.16.0/.claude-plugin/plugin.json`, JSON.stringify({ version: '0.16.0' }))
+  w.setDir(CACHE, ['0.13.0', '0.14.0', '0.15.0', '0.16.0', '0.17.0', 'notes'])
+  await w.start('second prompt', 't2')
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · 0.16.0 installed: /reload-plugins · no commit reviewed yet')
+  // nothing changed: no new status call
+  const shown = w.status.length
+  await w.start('third prompt', 't3')
+  assert.equal(w.status.length, shown)
+})
+
+test('status line: CLAUDE_PLUGIN_DATA first; a --plugin-dir checkout reads its plugin.json and looks for no newer version', async () => {
+  const fromEnv = lineWorld({ env: { CLAUDE_PLUGIN_DATA: '/data/jev-hooks' }, files: { '/data/jev-hooks/log.jsonl': review('NITS') } })
+  await fromEnv.sessionStart()
+  assert.equal(fromEnv.status.at(-1), 'jev 0.15.0 · last commit NITS')
+
+  const checkout = lineWorld({
+    pluginRoot: '/work/jev-hooks/',
+    files: { '/work/jev-hooks/.claude-plugin/plugin.json': JSON.stringify({ name: 'jev-hooks', version: '0.15.0' }) },
+  })
+  await checkout.sessionStart()
+  await checkout.start('a prompt', 't1')
+  assert.equal(checkout.status.at(-1), 'jev 0.15.0 · no commit reviewed yet')
+  assert.equal(checkout.calls.some((c) => c.call === 'fs.list'), false)
+})
+
+test('status line: with the router on, the router\'s text follows the line, and clearing it leaves the line', async () => {
+  const w = lineWorld({ router: true, options: { review_url: LOCAL_URL } })
+  assert.deepEqual(w.registered, ['session.start', 'tool.call', 'turn.start', 'prompt.submit', 'turn.step'])
+  await w.sessionStart()
+  w.answer(reply('small_edit'))
+  assert.equal(await turn(w, 'rename x to y in src/a.ts', 't1'), 'low')
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · no commit reviewed yet · jev router: small_edit 0.90 → low')
+  await w.submit({ text: '/compact' })
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · no commit reviewed yet')
+})
+
+test('status line: a refused call leaves the line as it was, and never breaks a turn or a Bash call', async () => {
+  const noId = lineWorld({ broken: ['session.id'] })
+  await noId.sessionStart()
+  assert.deepEqual(noId.status, [])
+  const noList = lineWorld({ broken: ['fs.list'] })
+  await noList.sessionStart()
+  await noList.start('a prompt', 't1')
+  assert.equal(noList.status.at(-1), 'jev 0.15.0 · no commit reviewed yet')
+  const noRead = lineWorld({ files: { [`${DATA}/log.jsonl`]: review('MERGE') } })
+  await noRead.sessionStart()
+  noRead.broken.add('fs.read')
+  assert.deepEqual(await noRead.bash('git commit -m "x"'), { result: { stdout: '', stderr: '', interrupted: false } })
+  assert.equal(noRead.status.at(-1), 'jev 0.15.0 · last commit MERGE')
+})
+
+test('status line: JEV_HOOKS_DISABLE=1 clears it at the next update and keeps it off', async () => {
+  const w = lineWorld({ files: { [`${DATA}/log.jsonl`]: review('MERGE') } })
+  await w.sessionStart()
+  assert.equal(w.status.at(-1), 'jev 0.15.0 · last commit MERGE')
+  w.env.JEV_HOOKS_DISABLE = '1'
+  await w.start('a prompt', 't1')
+  assert.equal(w.status.at(-1), undefined)
+  const shown = w.status.length
+  await w.bash('git commit -m "x"')
+  await w.start('another prompt', 't2')
+  assert.equal(w.status.length, shown)
+  const off = lineWorld({ env: { JEV_HOOKS_DISABLE: '1' } })
+  await off.sessionStart()
+  assert.deepEqual(off.status, [])
 })
