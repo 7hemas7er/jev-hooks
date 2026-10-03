@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `docs/evaluation.md`: the set of real commits from other repositories grows to 60
+  commits of three repositories. With this version's rules it shows 5 false
+  escalations: 4 on `hardcoded_secret` and the first on `weakens_tests` outside this
+  repository, whose second reading at 0.15 sits below one of the holdout's positives
+  (0.179), so its 0.10 stays.
+
 ## 0.12.0 — 2026-10-03
 
 Fewer false alarms on real commits, measured on 36 commits of two more repositories:

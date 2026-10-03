@@ -245,37 +245,45 @@ rule without its second reading. The two `injection_risk` positives are literal 
 (environment variables in a fetched URL and in an executed path), the `touches_auth`
 one an example Caddy configuration.
 
-A second set (2026-10-01): 36 commits of two other repositories of the maintainer, in
-PHP and in TypeScript, reviewed by 0.9.0 and 0.10.0 with the same question texts. They
-were joined with the log in the same way, and labelled by two agents with the
-definitions above, who agreed on all 324 labels. The labelled rows stay out of this
-repository: those repositories are private. With the rules of this version:
+A second set (2026-10-01, extended 2026-10-03): 60 commits of three other repositories
+of the maintainer, two in PHP and one in TypeScript, reviewed by 0.6.0 to 0.11.0 with
+the same question texts. They were joined with the log in the same way and labelled by
+two agents with the definitions above, who agreed on 538 of the 540 labels; a third
+agent decided the two they did not (both `breaks_api`). The labelled rows stay out of
+this repository: those repositories are private. With the rules of this version:
 
 | Question | Threshold | False alarms | Positives caught |
 |---|---:|---:|---:|
-| `hardcoded_secret` | 0.15 | 4 of 36 | none in the set |
-| `weakens_tests` | 0.50, second reading | 0 of 36 | none in the set |
-| `touches_auth` | 0.70 | 0 of 35 | 1 of 1 |
-| `injection_risk` | 0.99 | 0 of 35 | 0 of 1 |
-| `adds_tests` (missing tests) | 0.70 | 3 of 16 | 13 of 20 |
-| `debug_leftovers` | 0.40 | 0 of 36 | none in the set |
+| `hardcoded_secret` | 0.15 | 4 of 60 | none in the set |
+| `weakens_tests` | 0.50, second reading | 1 of 60 | none in the set |
+| `touches_auth` | 0.70 | 0 of 59 | 1 of 1 |
+| `injection_risk` | 0.99 | 0 of 58 | 0 of 2 |
+| `adds_tests` (missing tests) | 0.70 | 4 of 28 | 21 of 32 |
+| `breaks_api` | 0.90 | 2 of 58 | 0 of 2 |
+| `data_migration` | 0.76 | 0 of 59 | 0 of 1 |
+| `debug_leftovers` | 0.40 | 1 of 60 | none in the set |
 
-The four `hardcoded_secret` escalations, at 0.16 to 0.54, all come from the PHP
-repository, one of them on planning notes in Markdown. They are the noise that remains:
-across the 80 commits of the two sets, 6 escalations on that question and no secret.
-Moving its threshold from 0.10 to 0.15 removed one of them, with the bench's positives
-unchanged. That move looked at both bench sets, so the holdout no longer measures that
-threshold blind. Going higher would cost the holdout's positives at 0.199 and 0.245. The
-`debug_leftovers` note fired at 0.81 on those planning notes, which is why it now skips
-documentation-only commits. The `adds_tests` note misses 7 of its 20 positives, mostly
-early commits that add whole pages of a new application without a test, scored between
-0.03 and 0.21. The `injection_risk` positive is a literal one, a file name joined into a
-path on an in-memory file system. The set's single `breaks_api` and `data_migration`
-positive, one commit that changes an exported interface and converts stored data with no
-way back, scored 0.34 and 0.37, below both thresholds. The path list of application code
-above makes a stylesheet under `src/` application code and one under `resources/css/`
-not, and the labels follow it. There are still too few positives on the questions that
-escalate for a fit from real commits.
+The four `hardcoded_secret` escalations, at 0.16 to 0.54, all come from one of the PHP
+repositories, one of them on planning notes in Markdown. They are the noise that
+remains: across the 104 commits of the two sets, 6 escalations on that question and no
+secret. At 0.10 there were 8: moving the threshold to 0.15 removed those at 0.11 and
+0.13, with the bench's positives unchanged. That move looked at both bench sets, so the
+holdout no longer measures that threshold blind. Going higher would cost the holdout's
+positives at 0.199 and 0.245. The `weakens_tests` escalation is an expected value
+changed together with the code that computes it, with the second reading at 0.15, just
+above its 0.10; the second reading stays at 0.10, because one of the holdout's positives
+has it at 0.179. The `debug_leftovers` note fired at 0.81 on the planning notes, which
+is why it now skips documentation-only commits; the one left fired at 0.41, just above
+its threshold. The `adds_tests` note misses 11 of its 32 positives, mostly early commits
+that add whole pages of a new application without a test, scored between 0.03 and 0.21.
+Both `injection_risk` positives are literal ones: a file name joined into a path on an
+in-memory file system, and a command-line output folder joined into a path by a script
+that generates test data. The two `breaks_api` positives, an exported interface changed
+and a global function of a browser script removed, scored 0.34 and 0.83; the
+`data_migration` one, stored data converted with no way back, 0.37. The path list of
+application code above makes a stylesheet under `src/` application code and one under
+`resources/css/` not, and the labels follow it. There are still too few positives on the
+questions that escalate for a fit from real commits.
 
 ## Planned
 
