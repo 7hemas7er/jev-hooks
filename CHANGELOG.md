@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.18.0 — 2026-10-04
+
+A project can no longer rewrite the questions the trusted rules decide on.
+
 ### Changed
 
 - A project `checks.json` can no longer rewrite the questions the trusted rules and
