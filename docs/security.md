@@ -170,6 +170,10 @@ the key; ask a skill to review a file outside the repository.
 - A project can only tighten: add detectors and rules, raise floors, stricter
   thresholds, lower limits, more severe CI conclusions. Detectors, floors and
   calibration cannot be loosened from a repository.
+- A project `checks.json` cannot change the checks the trusted configuration computes
+  from code (`docs_only`, `touches_tests`, `merge_ready`), which the unless conditions
+  of trusted rules name: the trusted definition applies, and `touches_tests` can only
+  gain paths.
 - An invalid project file never switches anything off: the trusted base applies.
 - If `.jev-hooks/` differs from `HEAD` (untracked files included), the commit hook
   reviews with the committed rules and asks you.

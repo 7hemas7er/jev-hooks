@@ -185,22 +185,26 @@
     "higher_is_better": false,
     "compute": {
       "any_file_matches": [
-        "(^|/)([Tt]ests?|__tests__|specs?|testing|e2e|cypress|playwright)/",
+        "(^|/)([Tt]ests?|__tests__|[Ss]pecs?|testing|e2e|cypress|playwright|t|testdata|test-data|fixtures|__fixtures__|__snapshots__|__mocks__)/",
+        "Tests?/",
+        "(^|/)([Tt]ests?|[Ss]pecs?)\\.[A-Za-z0-9]+$",
         "[._-]([Tt]est|[Ss]pec|[Tt]ests)\\.[A-Za-z0-9]+$",
         "(^|/)(test_[^/]*|conftest|noxfile)\\.py$",
         "(^|/)[^/]*_test\\.(go|py|rb|exs?)$",
         "Tests?\\.(php|java|kt|cs|swift)$",
-        "(^|/)\\.(github|forgejo|gitea)/workflows/",
-        "(^|/)(\\.gitlab-ci\\.ya?ml|Jenkinsfile|azure-pipelines\\.ya?ml|\\.travis\\.yml|bitbucket-pipelines\\.yml|codecov\\.ya?ml|\\.coveragerc)$",
-        "(^|/)\\.(circleci|woodpecker|buildkite)/",
+        "\\.(snap|t)$",
+        "\\.(rs|zig|d|py|ex|jl)$",
+        "(^|/)\\.(github|forgejo|gitea|circleci|woodpecker|buildkite|husky)/",
+        "(^|/)(\\.gitlab-ci\\.ya?ml|Jenkinsfile|azure-pipelines\\.ya?ml|\\.travis\\.yml|bitbucket-pipelines\\.yml|codecov\\.ya?ml|\\.coveragerc|\\.pre-commit-config\\.ya?ml|lefthook\\.ya?ml|\\.rspec|dart_test\\.yaml|\\.env\\.testing)$",
         "(^|/)(jest|vitest|vite|karma|mocha|playwright|cypress|ava|nyc|c8)\\.(config|conf)\\.[A-Za-z]+$",
         "(^|/)\\.(mocharc|nycrc|c8rc)",
         "(^|/)(phpunit|pom)\\.xml(\\.dist)?$",
         "(^|/)(pytest|tox|setup)\\.(ini|cfg)$",
-        "(^|/)(package\\.json|composer\\.json|pyproject\\.toml|Cargo\\.toml|Makefile|build\\.gradle(\\.kts)?)$"
+        "(^|/)(package\\.json|composer\\.json|pyproject\\.toml|Cargo\\.toml|Makefile|GNUmakefile|Rakefile|[Jj]ustfile|Taskfile\\.ya?ml|deno\\.jsonc?|bunfig\\.toml|mix\\.exs|nx\\.json|turbo\\.json|angular\\.json|project\\.json|build\\.gradle(\\.kts)?|Directory\\.Build\\.props)$",
+        "\\.(csproj|fsproj|runsettings)$"
       ]
     },
-    "_why": "Computed by the code, for the unless of weakens_tests: every case the bench definition calls weakening (a skip, a removed test case or assertion, an expected value changed without the code, a coverage threshold or test job removed from CI) needs a test file, a CI file or the configuration of a test tool in the diff. On the bench no weakens_tests positive lacks one (dev 9, holdout 12, holdout-weakens 16, live 10), while live use escalated diffs that touched none (three Vue components deleted, 0.55). The list leans wide, package manifests and Makefiles included, because the costly mistake is the other one: a test file it does not recognise would cancel the rule, while a path matched too eagerly only leaves the rule as it was. A project with other test paths adds them in its own checks.json."
+    "_why": "Computed by the code, for the unless of weakens_tests: every case the bench definition calls weakening (a skip, a removed test case or assertion, an expected value changed without the code, a coverage threshold or test job removed from CI) needs a test file, a CI file or the configuration of a test tool in the diff. On the bench no weakens_tests positive lacks one (dev 9, holdout 12, holdout-weakens 16, live 10), while live use escalated diffs that touched none (three Vue components deleted, 0.55). The list leans wide, because the costly mistake is the other one: a test file it does not recognise would cancel the rule, while a path matched too eagerly only leaves the rule as it was. So it holds package manifests, task runners and test-tool configurations, fixtures and snapshots, and every file of the languages whose tests or doctests live inside the source files (Rust, Zig, D, Python, Elixir, Julia): on those the rule keeps firing as before. A project with other test paths adds them in its own checks.json; it cannot remove any (config.ts, keepTrustedComputed)."
   },
   "merge_ready": {
     "label": "Ready to merge",

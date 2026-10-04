@@ -1625,6 +1625,35 @@ function replaceNames(c: Checks, vocab: Vocabulary): { checks: Checks; names: Ma
   return { checks, names }
 }
 
+// The checks a trusted layer computes from code (docs_only, touches_tests,
+// merge_ready) sit in the unless conditions of trusted rules: a repository that
+// redefined one could cancel those rules (docs_only matching every path,
+// touches_tests matching none). So the trusted definition stays, whatever the project
+// writes for that id. The one change that only tightens is kept: extra paths in an
+// any_file_matches list, which can only turn the check to 1 and leave its rules firing.
+// A check the project drops is left out: an unless naming it is dropped and the rule
+// fires (validatePolicy).
+function keepTrustedComputed(c: Checks, trusted: Checks, path: string, warn: (m: string) => void): Checks {
+  const has = (list: readonly RegExp[], x: RegExp): boolean => list.some((y) => y.source === x.source && y.flags === x.flags)
+  const same = (a: readonly RegExp[] = [], b: readonly RegExp[] = []): boolean => a.length === b.length && a.every((x) => has(b, x))
+  let defs: Record<string, CheckDef> | null = null
+  for (const id of c.order) {
+    const t = Object.hasOwn(trusted.defs, id) ? trusted.defs[id] : undefined
+    if (!t || t.source !== 'computed') continue
+    const d = c.defs[id]
+    const trustedAny = t.compute?.any_file_matches
+    const projectAny = d.source === 'computed' ? d.compute?.any_file_matches ?? [] : []
+    const extra = trustedAny ? projectAny.filter((x) => !has(trustedAny, x)) : []
+    const unchanged = d.type === t.type && d.source === 'computed' && d.compute?.from_verdict === t.compute?.from_verdict
+      && same(d.compute?.all_files_match, t.compute?.all_files_match)
+      && (trustedAny ? trustedAny.every((x) => has(projectAny, x)) : d.compute?.any_file_matches === undefined)
+    defs ??= { ...c.defs }
+    defs[id] = { ...t, label: d.label, ...(trustedAny ? { compute: { ...t.compute, any_file_matches: [...trustedAny, ...extra] } } : {}) }
+    if (!unchanged) warn(`${path} /${id}: computed by the trusted configuration, which a repository cannot change${trustedAny ? ' (it can only add paths to any_file_matches)' : ''}: the trusted definition applies`)
+  }
+  return defs ? { ...c, defs } : c
+}
+
 // .jev-hooks/policy.json names the checks by the ids of its checks.json: the replaced
 // ones are translated before reading it. Only the fields that name a check (the check
 // of a rule and of its unless, the check of a detector); the rest stays as it is, and
@@ -2066,6 +2095,7 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
     if (!r.ok) warn(`${r.error.message}: using ${checksSource}`)
     else {
       const replaced = replaceNames(r.value, vocab)
+      replaced.checks = keepTrustedComputed(replaced.checks, checks, layers.project.checks.path, warn)
       const withProject = validatePolicy(selection.policyJson.value, replaced.checks, policySource)
       if (withProject.ok) {
         for (const n of withProject.value.notes ?? []) warn(n)

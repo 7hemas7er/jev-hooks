@@ -37,7 +37,9 @@ removing a floor would take one line. So:
   file;
 - a project `checks.json` can ask different questions, but the trusted rules must still
   resolve against it, its texts are never shown to Claude, and its regexes run in a
-  worker with a time limit;
+  worker with a time limit. The checks computed by code keep their trusted definition
+  (a note says so when the file tries to change one); the only change kept is extra
+  paths in `touches_tests`, which can only make `weakens_tests` fire more;
 - an invalid project file never switches anything off: the trusted base applies, with a
   warning;
 - if `.jev-hooks/` differs from `HEAD` (untracked files included), the commit hook uses

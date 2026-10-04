@@ -217,13 +217,19 @@ test('the original checks.json also works as a project file', () => {
   const r = valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: readText('tests/data/checks-original.json') } } })))
   assert.equal(r.sources.checks, '.jev-hooks/checks.json')
   assert.equal(r.checks.defs.hardcoded_secret.scope, 'global')
-  // it predates weakens_expected and touches_tests: those unless conditions are dropped,
+  // it asked the model docs_only and merge_ready: the trusted computation stays, so a
+  // diff cannot talk the model into "documentation only" and cancel the rules; it
+  // predates weakens_expected and touches_tests: those unless conditions are dropped,
   // on the safe side, with a note
   assert.deepEqual(r.warnings, [
+    '.jev-hooks/checks.json /docs_only: computed by the trusted configuration, which a repository cannot change: the trusted definition applies',
+    '.jev-hooks/checks.json /merge_ready: computed by the trusted configuration, which a repository cannot change: the trusted definition applies',
     'config/policy.json /lanes/2/rules/2/unless/1/check: unless condition dropped: "weakens_expected" is not defined in .jev-hooks/checks.json, so the rule fires without it',
     'config/policy.json /lanes/2/rules/2/unless/2/check: unless condition dropped: "touches_tests" is not defined in .jev-hooks/checks.json, so the rule fires without it',
   ])
   assert.deepEqual(rule(r.policy, 'NITS', 'weakens_tests')[0].unless, [{ check: 'docs_only', op: 'gte', value: 0.5 }])
+  assert.equal(r.checks.defs.docs_only.source, 'computed')
+  assert.deepEqual(r.checks.defs.merge_ready.compute, { from_verdict: 'MERGE' })
   // untrusted: its path regexes run outside the core
   assert.equal(r.checks.fromProject, true)
   assert.equal(valueOf(composeConfig(layers())).checks.fromProject, undefined)
@@ -240,6 +246,11 @@ test('touches_tests recognises test, CI and test-tool paths, and not application
     '.gitlab-ci.yml', 'Jenkinsfile', '.circleci/config.yml', 'jest.config.js', 'vitest.config.ts', 'vite.config.ts',
     '.mocharc.json', 'phpunit.xml.dist', 'pytest.ini', 'tox.ini', 'setup.cfg', '.coveragerc', 'package.json',
     'web/package.json', 'composer.json', 'pyproject.toml', 'Makefile', 'pom.xml', 'build.gradle.kts',
+    // missed by the first list (security review of 0.17.0): bare test files, fixtures and
+    // snapshots, task runners, and the languages that keep tests inside the sources
+    'test.js', 'src/test.ts', 'myapp/tests.py', 'spec.rb', 't/basic.t', 'testdata/golden.json', 'fixtures/user.json',
+    'src/__snapshots__/a.snap', 'App.Tests/Bar.cs', 'FooTests/Bar.cs', '.env.testing', 'Rakefile', 'justfile', 'Taskfile.yml',
+    'deno.json', '.github/actions/setup/action.yml', '.pre-commit-config.yaml', 'src/lib.rs', 'pkg/util.py', 'lib/app.ex',
   ]
   const no = [
     'src/app.ts', 'README.md', 'docs/testing-guide.png', 'resources/js/Components/Logo/ArgoLogoOption1.vue',
@@ -248,6 +259,35 @@ test('touches_tests recognises test, CI and test-tool paths, and not application
   ]
   for (const p of yes) assert.ok(matchesAny(re, p), p)
   for (const p of no) assert.ok(!matchesAny(re, p), p)
+})
+
+test('project checks.json: the checks the trusted layers compute keep their definition, any_file_matches can only grow', () => {
+  const trusted = checks()
+  const withChecks = (mod: (c: any) => void) => {
+    const c = structuredClone(CHECKS)
+    mod(c)
+    return valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } } })))
+  }
+  const sources = (re: readonly RegExp[] | undefined): string[] => (re ?? []).map((x) => x.source)
+  const NOTE = /computed by the trusted configuration, which a repository cannot change/
+  // touches_tests matching nothing would cancel weakens_tests on every diff
+  const never = withChecks((c) => { c.touches_tests.compute.any_file_matches = ['(?!)'] })
+  assert.deepEqual(sources(never.checks.defs.touches_tests.compute?.any_file_matches), [...sources(trusted.defs.touches_tests.compute?.any_file_matches), '(?!)'])
+  assert.ok(never.warnings.some((w) => /\/touches_tests: .*only add paths/.test(w)), JSON.stringify(never.warnings))
+  // extra test paths only tighten: kept, with no note
+  const more = withChecks((c) => { c.touches_tests.compute.any_file_matches.push('(^|/)checks/') })
+  assert.equal(sources(more.checks.defs.touches_tests.compute?.any_file_matches).at(-1), new RegExp('(^|/)checks/').source)
+  assert.ok(!more.warnings.some((w) => NOTE.test(w)), JSON.stringify(more.warnings))
+  // docs_only matching every path, or asked of the model, would cancel the rules that skip documentation
+  const all = withChecks((c) => { c.docs_only.compute.all_files_match = ['.'] })
+  assert.deepEqual(sources(all.checks.defs.docs_only.compute?.all_files_match), sources(trusted.defs.docs_only.compute?.all_files_match))
+  const asked = withChecks((c) => { c.touches_tests = { type: 'noul', instructions: 'x?' } })
+  assert.equal(asked.checks.defs.touches_tests.source, 'computed')
+  assert.ok(asked.warnings.some((w) => /\/touches_tests: /.test(w)))
+  // dropped: the unless that names it goes, and the rule fires
+  const dropped = withChecks((c) => { delete c.touches_tests })
+  assert.equal(Object.hasOwn(dropped.checks.defs, 'touches_tests'), false)
+  assert.ok(!rule(dropped.policy, 'NITS', 'weakens_tests')[0].unless?.some((u) => u.check === 'touches_tests'))
 })
 
 // ─── Errors: file, pointer and message ─────────────────────────────────────────
@@ -919,7 +959,7 @@ test('project: problems and notes about project files quote neither keys nor val
       /\/primary_concern\/value: (option \(text not shown\) is not among those in criteria|expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\))/],
     ['value form', withChecks((c) => { c.primary_concern.value = f() }), /\/primary_concern\/value: expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\)/],
     ['regex that does not compile', withChecks((c) => { c.touches_auth.escalation_patterns = [`(${f()}`] }), /invalid regex: it does not compile in JavaScript/],
-    ['from_verdict lane', withChecks((c) => { c.merge_ready.compute.from_verdict = f() }), /ignored, the rules in .*unknown lane \(text not shown\)/],
+    ['from_verdict lane', withChecks((c) => { c.merge_ready.compute.from_verdict = f() }), /\/merge_ready: computed by the trusted configuration, which a repository cannot change: the trusted definition applies/],
     ['broken JSON', [valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: `{"a": ${f()}}` } } }))).warnings.join('\n')], /invalid JSON \(/],
     ['top-level key', withPolicy({ [f()]: 1 }), /\/‹key›: unknown field/],
     ['lane name', withPolicy({ lanes: [{ name: f(), rules: [] }] }), /unknown lane \(text not shown\) \(lanes: BLOCK/],

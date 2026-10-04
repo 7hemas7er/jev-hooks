@@ -5,6 +5,18 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- A project `checks.json` could cancel trusted rules by redefining a check computed by
+  code: `docs_only` matching every path, `touches_tests` matching none, or either one
+  asked of the model, where a diff could argue for the answer. The trusted definition
+  now applies, with a note; a project can only add paths to `touches_tests`.
+- `touches_tests` missed test files: bare `test.js`, `tests.py` or `spec.rb`, `t/`,
+  fixtures, test data and snapshots, task runners, and tests that live inside the
+  source files. The list now counts every file of Rust, Zig, D, Python, Elixir and
+  Julia, so on those languages `weakens_tests` fires as before. Both found by a
+  security review of 0.17.0 before it was pushed.
+
 ## 0.17.0 — 2026-10-04
 
 No weakened-tests escalation on a diff that touches no test, CI or test-tool file.
