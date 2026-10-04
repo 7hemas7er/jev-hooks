@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.17.2 — 2026-10-04
+
+No check that can cancel a trusted rule can be redefined from a repository.
+
 ### Fixed
 
 - The protection of 0.17.1 covered only the checks computed by code: a project
