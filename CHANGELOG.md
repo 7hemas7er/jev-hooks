@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `data_migration` no longer notes a documentation-only commit: in live use a commit of
+  `CHANGELOG.md` and `docs/evaluation.md` alone scored 0.997, the one docs-only diff
+  among the three of 287 reviewed diffs that crossed 0.76. On the bench the positives
+  are the same and the holdout's false notes drop from 3 to 2 of 111. Every rule but
+  `hardcoded_secret` now skips documentation alone.
+
 ## 0.18.0 — 2026-10-04
 
 A project can no longer rewrite the questions the trusted rules decide on.

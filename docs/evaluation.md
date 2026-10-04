@@ -262,7 +262,7 @@ version:
 | `injection_risk` | 0.99 | 1 of 86 | 0 of 2 |
 | `adds_tests` (missing tests) | 0.70 | 8 of 46 | 25 of 42 |
 | `breaks_api` | 0.90, unless docs only | 2 of 85 | 1 of 3 |
-| `data_migration` | 0.76 | 0 of 86 | 1 of 2 |
+| `data_migration` | 0.76, unless docs only | 0 of 86 | 1 of 2 |
 | `debug_leftovers` | 0.40 | 3 of 88 | none in the set |
 
 `touches_auth` met real authentication work here, an OpenID Connect login with Keycloak:
