@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.17.1 — 2026-10-04
+
+The weakened-tests gate of 0.17.0 cannot be loosened from a repository, and knows more test files.
+
 ### Fixed
 
 - A project `checks.json` could cancel trusted rules by redefining a check computed by
