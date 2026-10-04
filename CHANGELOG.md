@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.19.0 — 2026-10-05
+
+No data-migration note on documentation: only `hardcoded_secret` still reads documentation alone.
+
 ### Changed
 
 - `data_migration` no longer notes a documentation-only commit: in live use a commit of
