@@ -1625,21 +1625,31 @@ function replaceNames(c: Checks, vocab: Vocabulary): { checks: Checks; names: Ma
   return { checks, names }
 }
 
-// The checks that can cancel a trusted rule: those a trusted layer computes from code
-// (docs_only, touches_tests, merge_ready) and every check named by the unless of a
-// trusted rule (weakens_expected, a question to the model). A repository that redefined
-// one could cancel those rules: docs_only matching every path, touches_tests matching
-// none, weakens_expected rewritten as a question whose answer is always no, or a
-// computed check turned into a question a diff can argue with. So the trusted
-// definition stays, whatever the project writes for that id. The one change that only
-// tightens is kept: extra paths in an any_file_matches list, which can only turn the
-// check to 1 and leave its rules firing. A check the project drops is left out: an
-// unless naming it is dropped and the rule fires (validatePolicy).
+// The checks the trusted policy decides on: those a trusted layer computes from code
+// (docs_only, touches_tests, merge_ready) and every check a trusted rule, unless or
+// detector names. A repository that redefined one could loosen those rules while
+// "only tightening": a rule's question rewritten so the model always answers no,
+// weakens_expected rewritten so it always cancels weakens_tests, docs_only matching
+// every path, touches_tests matching none, a computed check turned into a question a
+// diff can argue with. So the trusted definition stays, whatever the project writes
+// for that id. The project keeps its own questions (new ids, and the trusted ones no
+// rule names), and one change that only tightens: extra paths in an any_file_matches
+// list, which can only turn the check to 1 and leave its rules firing. A check the
+// project drops makes its rules invalid or its unless go (validatePolicy), never a
+// looser verdict.
 function keepTrustedGates(c: Checks, trusted: Checks, policy: Policy, path: string, warn: (m: string) => void): Checks {
   const gates = new Set<string>(trusted.order.filter((id) => trusted.defs[id].source === 'computed'))
-  for (const lane of policy.lanes) for (const r of lane.rules) for (const u of r.unless ?? []) gates.add(u.check)
+  for (const lane of policy.lanes) {
+    for (const r of lane.rules) {
+      gates.add(r.check)
+      for (const u of r.unless ?? []) gates.add(u.check)
+    }
+  }
+  for (const d of policy.detectors) if (d.check !== undefined) gates.add(d.check)
   const has = (list: readonly RegExp[], x: RegExp): boolean => list.some((y) => y.source === x.source && y.flags === x.flags)
   let defs: Record<string, CheckDef> | null = null
+  const changed: string[] = []
+  let pathsOnly = false
   for (const id of c.order) {
     const t = gates.has(id) && Object.hasOwn(trusted.defs, id) ? trusted.defs[id] : undefined
     if (!t) continue
@@ -1648,11 +1658,15 @@ function keepTrustedGates(c: Checks, trusted: Checks, policy: Policy, path: stri
     const projectAny = d.source === 'computed' ? d.compute?.any_file_matches ?? [] : []
     const extra = trustedAny ? projectAny.filter((x) => !has(trustedAny, x)) : []
     const kept: CheckDef = { ...t, label: d.label, ...(trustedAny ? { compute: { ...t.compute, any_file_matches: [...trustedAny, ...extra] } } : {}) }
-    // unchanged: the project wrote the trusted definition, or added paths to it
-    const unchanged = canonical(checkForm({ ...d, label: id }) as Json) === canonical(checkForm({ ...kept, label: id }) as Json)
     defs ??= { ...c.defs }
     defs[id] = kept
-    if (!unchanged) warn(`${path} /${id}: a condition of the trusted rules, which a repository cannot change${trustedAny ? ' (it can only add paths to any_file_matches)' : ''}: the trusted definition applies`)
+    // unchanged: the project wrote the trusted definition, or added paths to it
+    if (canonical(checkForm({ ...d, label: id }) as Json) === canonical(checkForm({ ...kept, label: id }) as Json)) continue
+    changed.push(id)
+    if (trustedAny) pathsOnly = true
+  }
+  if (changed.length > 0) {
+    warn(`${path}: ${changed.join(', ')}: used by the trusted rules, which a repository cannot change${pathsOnly ? ' (it can only add paths to any_file_matches)' : ''}: the trusted definitions apply`)
   }
   return defs ? { ...c, defs } : c
 }

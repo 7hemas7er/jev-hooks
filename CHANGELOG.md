@@ -5,6 +5,15 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- A project `checks.json` can no longer rewrite the questions the trusted rules and
+  detectors decide on: a rule's question rewritten so the model always answers no
+  loosened the rule, against "a project can only tighten". It keeps its own questions
+  (new ones, and the trusted ones no rule uses); the others take the trusted
+  definition, with one note naming them. Found by a security review of 0.17.2 before
+  it was pushed.
+
 ## 0.17.2 — 2026-10-04
 
 No check that can cancel a trusted rule can be redefined from a repository.

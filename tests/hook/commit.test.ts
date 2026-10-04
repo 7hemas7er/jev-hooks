@@ -921,7 +921,8 @@ test('.jev-hooks/checks.json with a slow regex on the paths: the hook does not h
   const pr = trial()
   try {
     const checks = JSON.parse(readFileSync(join(ROOT, 'config', 'checks.json'), 'utf8'))
-    checks.hardcoded_secret.escalation_patterns.unshift('.*a'.repeat(8) + '!')
+    // added to touches_tests, the one place where a project adds to a trusted check
+    checks.touches_tests.compute.any_file_matches.push('.*a'.repeat(8) + '!')
     pr.r.write('.jev-hooks/checks.json', JSON.stringify(checks))
     pr.r.commit('project questions')
     const long = `src/${'a'.repeat(45)}/conf.py`

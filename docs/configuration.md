@@ -35,12 +35,12 @@ removing a floor would take one line. So:
   lower its cap (`"max_effort"`); every other field is ignored with a note that names
   it (the first three; past them one note gives how many more), and no note quotes the
   file;
-- a project `checks.json` can ask different questions, but the trusted rules must still
-  resolve against it, its texts are never shown to Claude, and its regexes run in a
-  worker with a time limit. The checks computed by code and those named by the
-  `unless` of a trusted rule keep their trusted definition (a note says so when the
-  file tries to change one); the only change kept is extra paths in `touches_tests`,
-  which can only make `weakens_tests` fire more;
+- a project `checks.json` can add questions (for its own rules in `policy.json`) and
+  rewrite the trusted ones no rule uses; its texts are never shown to Claude, and its
+  regexes run in a worker with a time limit. Every check a trusted rule, `unless` or
+  detector names, and every check computed by code, keeps its trusted definition (a
+  note says so when the file tries to change one); the only change kept is extra paths
+  in `touches_tests`, which can only make `weakens_tests` fire more;
 - an invalid project file never switches anything off: the trusted base applies, with a
   warning;
 - if `.jev-hooks/` differs from `HEAD` (untracked files included), the commit hook uses

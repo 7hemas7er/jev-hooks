@@ -256,12 +256,16 @@ test('hook: with a hostile .jev-hooks/ already committed, an escalation deny, th
     assert.equal(cfg.sources.checks, '.jev-hooks/checks.json')
     assert.match(cfg.sources.policy, /\/config\/policy\.json \+ \.jev-hooks\/policy\.json \(restrictions only\)$/)
     assert.deepEqual(cfg.modifiedRules, [])
-    // weakens_expected is an unless of a trusted rule: its trusted text stays, with a
-    // note that quotes nothing of the file
-    assert.deepEqual(cfg.warnings, ['.jev-hooks/checks.json /weakens_expected: a condition of the trusted rules, which a repository cannot change: the trusted definition applies'])
+    // the questions the trusted rules decide on keep their trusted text, with a note
+    // that names only trusted ids; the hostile texts stay on the project's own questions
+    assert.deepEqual(cfg.warnings, ['.jev-hooks/checks.json: hardcoded_secret, injection_risk, touches_auth, weakens_tests, weakens_expected, adds_tests, breaks_api, data_migration, debug_leftovers: used by the trusted rules, which a repository cannot change: the trusted definitions apply'])
     assert.equal(cfg.checks.fromProject, true)
-    // the instructions stay (they go to the backend), the label does not: nothing of the project's ever comes out
-    assert.match(String(cfg.checks.defs.touches_auth.instructions), RE_MARKER)
+    // the instructions of the project's own questions stay (they go to the backend), the
+    // label does not: nothing of the project's ever comes out. A question a trusted rule
+    // decides on keeps the trusted text
+    assert.match(String(cfg.checks.defs.blast_radius.instructions), RE_MARKER)
+    assert.equal(cfg.checks.defs.blast_radius.label, 'blast_radius')
+    assert.equal(cfg.checks.defs.touches_auth.instructions, json('config/checks.json').touches_auth.instructions)
     assert.equal(cfg.checks.defs.touches_auth.label, 'touches_auth')
 
     // NITS with escalation: threshold on touches_auth, disagreement on hardcoded_secret and
