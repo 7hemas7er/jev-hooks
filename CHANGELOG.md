@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.16.0 — 2026-10-04
+
+No API note on documentation, and the first real `touches_auth` positives counted.
+
 ### Changed
 
 - `breaks_api` no longer notes a documentation-only commit: two of its three false
