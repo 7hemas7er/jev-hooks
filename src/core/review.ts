@@ -126,7 +126,7 @@ function hashesOf(i: ReviewInput, c: ReviewConfig, questions: Questions): Record
 
 // ─── Path regexes of a project checks.json ────────────────────────────────────
 //
-// escalation_patterns and all_files_match of a project checks.json are regexes written
+// escalation_patterns, all_files_match and any_file_matches of a project checks.json are regexes written
 // by whoever prepared the repo: one with catastrophic backtracking, on a long path,
 // would hold the hook until Claude Code's timeout, and the commit would go through
 // without even the floors. So they run outside (a Worker with a time limit) on
@@ -134,7 +134,7 @@ function hashesOf(i: ReviewInput, c: ReviewConfig, questions: Questions): Record
 // paths it matched: same results for priority, escalation and docs_only, no
 // backtracking.
 
-type PathField = 'escalation_patterns' | 'all_files_match'
+type PathField = 'escalation_patterns' | 'all_files_match' | 'any_file_matches'
 
 function pathRegexes(ch: Checks): { id: string; field: PathField; k: number; re: RegExp }[] {
   const out: { id: string; field: PathField; k: number; re: RegExp }[] = []
@@ -142,6 +142,7 @@ function pathRegexes(ch: Checks): { id: string; field: PathField; k: number; re:
     const def = ch.defs[id]
     def.escalation_patterns.forEach((re, k) => out.push({ id, field: 'escalation_patterns', k, re }))
     def.compute?.all_files_match?.forEach((re, k) => out.push({ id, field: 'all_files_match', k, re }))
+    def.compute?.any_file_matches?.forEach((re, k) => out.push({ id, field: 'any_file_matches', k, re }))
   }
   return out
 }
@@ -171,11 +172,12 @@ async function checksWithMatches(ch: Checks, paths: string[], port: ReviewDeps['
     const def = ch.defs[id]
     items[id] = { ...def, escalation_patterns: [...def.escalation_patterns] }
     if (def.compute?.all_files_match) items[id].compute = { ...def.compute, all_files_match: [...def.compute.all_files_match] }
+    if (def.compute?.any_file_matches) items[id].compute = { ...def.compute, any_file_matches: [...def.compute.any_file_matches] }
   }
   all.forEach((x, n) => {
     const re = literalRegex(valid ? (table as number[][])[n].map((j) => paths[j]) : [])
     if (x.field === 'escalation_patterns') items[x.id].escalation_patterns[x.k] = re
-    else (items[x.id].compute?.all_files_match as RegExp[])[x.k] = re
+    else (items[x.id].compute?.[x.field] as RegExp[])[x.k] = re
   })
   return { checks: { ...ch, defs: items }, done: valid }
 }
@@ -276,17 +278,25 @@ function maskPaths(r: ReviewResult, c: ReviewConfig): ReviewResult {
   }
 }
 
-// The checks computed from the paths (compute.all_files_match): docs_only looks at
-// every path of the diff, examined, ignored and omitted, and also at the original name
-// of a rename (moving code into docs/ is not a docs-only change). Exported for
-// scripts/simulate-policy.ts, which replays the bench answers with the same code.
-export function valuesFromPaths(checks: Checks, file: readonly FileDiff[]): Record<string, CheckValue> {
+// The checks computed from the paths (compute.all_files_match, any_file_matches):
+// docs_only looks at every path of the diff, examined, ignored and omitted, and also at
+// the original name of a rename (moving code into docs/ is not a docs-only change).
+// When the project's path regexes timed out (unmatched), nothing matched: that makes
+// an all_files_match check 0, the safe side for an unless, but would make an
+// any_file_matches check 0 as well, which as an unless would cancel the rule. So an
+// any_file_matches check gets no value then, and a rule whose unless names it fires.
+// Exported for scripts/simulate-policy.ts, which replays the bench answers with the
+// same code.
+export function valuesFromPaths(checks: Checks, file: readonly FileDiff[], unmatched = false): Record<string, CheckValue> {
   const out: Record<string, CheckValue> = {}
   const paths = file.flatMap((f) => (f.oldPath === undefined ? [f.path] : [f.path, f.oldPath]))
   for (const id of checks.order) {
-    const re = checks.defs[id].compute?.all_files_match
-    if (checks.defs[id].source !== 'computed' || !re) continue
-    out[id] = { value: paths.length > 0 && paths.every((x) => matchesAny(re, x)) ? 1 : 0, source: 'computed' }
+    const def = checks.defs[id]
+    if (def.source !== 'computed') continue
+    const all = def.compute?.all_files_match
+    const any = def.compute?.any_file_matches
+    if (all) out[id] = { value: paths.length > 0 && paths.every((x) => matchesAny(all, x)) ? 1 : 0, source: 'computed' }
+    else if (any && !unmatched) out[id] = { value: paths.some((x) => matchesAny(any, x)) ? 1 : 0, source: 'computed' }
   }
   return out
 }
@@ -404,13 +414,15 @@ async function reviewInner(
 
   // 3b. The path regexes of a project checks.json, outside the core and with a time
   // limit, like the project detectors. If they time out nothing matches (docs_only is
-  // 0) and coverage is partial. With the floor already at the top they are not needed:
-  // no chunk is sent.
+  // 0, touches_tests has no value) and coverage is partial. With the floor already at
+  // the top they are not needed: no chunk is sent.
   let pathRegexesTimedOut = false
+  let pathsUnmatched = false
   if (checks.fromProject) {
     const paths = [...new Set(d.files.flatMap((f) => (f.oldPath === undefined ? [f.path] : [f.path, f.oldPath])))]
     const r = await checksWithMatches(checks, paths, withoutBackend ? undefined : deps.matchProjectPaths)
     checks = r.checks
+    pathsUnmatched = !r.done
     if (!r.done && !withoutBackend) {
       pathRegexesTimedOut = true
       note(`path regexes of ${c.sources.checks ?? 'checks.json'} not evaluated: time ran out or execution unavailable`)
@@ -702,7 +714,7 @@ async function reviewInner(
     const v = aggregateNoul(list, { invert: def.invert, perChunk: def.scope === 'chunk' })
     if (v) values[id] = v
   }
-  Object.assign(values, valuesFromPaths(checks, d.files))
+  Object.assign(values, valuesFromPaths(checks, d.files, pathsUnmatched))
 
   // ─── Verdict ────────────────────────────────────────────────────────────────
   const omitted = [...globalOmitted]

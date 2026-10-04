@@ -5,6 +5,16 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `weakens_tests` escalates only when the diff touches a test, a CI workflow or the
+  configuration of a test tool, a new check computed from the paths (`touches_tests`,
+  with `compute.any_file_matches`). Every weakening the bench definitions list needs
+  such a file; a live commit that deleted three components and touched none was
+  escalated at 0.55. On the bench all 47 positives keep the rule and the numbers do not
+  change. If a project's path regexes time out, `touches_tests` gets no value and the
+  rule fires as before.
+
 ## 0.16.0 — 2026-10-04
 
 No API note on documentation, and the first real `touches_auth` positives counted.

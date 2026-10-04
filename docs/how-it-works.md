@@ -32,9 +32,9 @@ What each step is for:
   weakened tests, API breaks, data migrations, debug leftovers) see only the file list
   and the diff of their chunk, never the title or the description: a description is
   written by whoever made the change, and on a pull request from a fork it can be hostile.
-  The five global questions see title, description and the full file list. Two more
-  checks (`docs_only`, `merge_ready`) are computed by code, because a 4B model applies
-  rules poorly and a path regex does not.
+  The five global questions see title, description and the full file list. Three more
+  checks (`docs_only`, `touches_tests`, `merge_ready`) are computed by code, because a
+  4B model applies rules poorly and a path regex does not.
 - **Floors.** A deterministic detector sets a minimum lane the model cannot lower: an
   `sk_live_…` key in `src/` is BLOCK even with the backend switched off. When the floor
   is already BLOCK, the backend is not even called.

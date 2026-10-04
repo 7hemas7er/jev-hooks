@@ -646,16 +646,19 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
   }
   if (type && source === 'computed') {
     if (type !== 'noul') addProblem(l, f('source'), 'source "computed" only applies to nouls: the code computes 0 or 1')
-    if (o.compute === undefined) addProblem(l, f('compute'), 'source "computed" needs compute (all_files_match or from_verdict)')
+    if (o.compute === undefined) addProblem(l, f('compute'), 'source "computed" needs compute (all_files_match, any_file_matches or from_verdict)')
     else {
       const c = readObject(l, o.compute, f('compute'))
       if (c) {
-        onlyFields(l, c, f('compute'), ['all_files_match', 'from_verdict'])
-        const howMany = (c.all_files_match !== undefined ? 1 : 0) + (c.from_verdict !== undefined ? 1 : 0)
-        if (howMany !== 1) addProblem(l, f('compute'), 'exactly one of all_files_match and from_verdict is needed')
+        onlyFields(l, c, f('compute'), ['all_files_match', 'any_file_matches', 'from_verdict'])
+        const howMany = (c.all_files_match !== undefined ? 1 : 0) + (c.any_file_matches !== undefined ? 1 : 0) + (c.from_verdict !== undefined ? 1 : 0)
+        if (howMany !== 1) addProblem(l, f('compute'), 'exactly one of all_files_match, any_file_matches and from_verdict is needed')
         else if (c.all_files_match !== undefined) {
           const re = readListOf(l, c.all_files_match, childPointer(f('compute'), 'all_files_match'), (x, px) => readRegex(l, x, px, ''), { min: 1 })
           if (re) compute = { all_files_match: re }
+        } else if (c.any_file_matches !== undefined) {
+          const re = readListOf(l, c.any_file_matches, childPointer(f('compute'), 'any_file_matches'), (x, px) => readRegex(l, x, px, ''), { min: 1 })
+          if (re) compute = { any_file_matches: re }
         } else {
           const lane = readString(l, c.from_verdict, childPointer(f('compute'), 'from_verdict'), { nonEmpty: true })
           if (lane !== undefined) compute = { from_verdict: lane }

@@ -67,6 +67,8 @@ const CASES: [string, Record<string, number>, string][] = [
   ['weakens_tests just below', { weakens_tests: thr('weakens_tests') - 0.01 }, 'MERGE'],
   ['weakens_tests at the threshold', { weakens_tests: thr('weakens_tests') }, 'NITS'],
   ['weakens_tests high, docs only: the unless cancels it', { weakens_tests: 1, docs_only: 1 }, 'MERGE'],
+  ['weakens_tests high, no test, CI or test-tool file: the unless cancels it', { weakens_tests: 1, weakens_expected: 1, touches_tests: 0 }, 'MERGE'],
+  ['weakens_tests high, a test file in the diff', { weakens_tests: 1, weakens_expected: 1, touches_tests: 1 }, 'NITS'],
   ['touches_auth just below', { touches_auth: thr('touches_auth') - 0.0001 }, 'MERGE'],
   ['touches_auth at the threshold', { touches_auth: thr('touches_auth') }, 'NITS'],
   ['breaks_api at the threshold: a note', { breaks_api: thr('breaks_api') }, 'NITS'],

@@ -774,16 +774,18 @@ class SpyRegex extends RegExp {
 const LONG = `docs/${'a'.repeat(80)}/readme.md`
 
 // The spy in front of the escalation_patterns of hardcoded_secret and as the only
-// all_files_match of docs_only.
+// all_files_match of docs_only and any_file_matches of touches_tests.
 function projectChecks(spy: RegExp): Checks {
   const hs = CHECKS.defs.hardcoded_secret
   const docs = CHECKS.defs.docs_only
+  const tt = CHECKS.defs.touches_tests
   return {
     ...CHECKS, fromProject: true,
     defs: {
       ...CHECKS.defs,
       hardcoded_secret: { ...hs, escalation_patterns: [spy, ...hs.escalation_patterns] },
       docs_only: { ...docs, compute: { all_files_match: [spy] } },
+      touches_tests: { ...tt, compute: { any_file_matches: [spy] } },
     },
   }
 }
@@ -808,8 +810,9 @@ test('project checks.json: the path regexes run outside the core, which uses onl
     // priority: the file that matches a pattern of a critical check goes first, even if
     // in path order it would come later
     assert.equal(r.files.examined[0], LONG)
-    // docs_only from the table: every path matches
+    // docs_only and touches_tests from the table: every path matches
     assert.equal(r.values.docs_only.value, 1)
+    assert.equal(r.values.touches_tests.value, 1)
     assert.ok(!r.notes?.some((n) => n.includes('not evaluated')))
   })
 })
@@ -822,6 +825,9 @@ test('project checks.json: regexes timed out or without something to run them â†
       const extra: Partial<ReviewDeps> = matchProjectPaths ? { matchProjectPaths } : {}
       const r = await review(input(newFile(LONG, ['Instructions.'])), config({ checks }), deps(backendOf(fake.url), fetchTransport(), extra))
       assert.equal(r.values.docs_only.value, 0)
+      // "nothing matched" would read as "no test touched" and cancel weakens_tests:
+      // no value instead, so the rule whose unless names it fires
+      assert.equal(Object.hasOwn(r.values, 'touches_tests'), false)
       assert.ok(r.notes?.some((n) => /path regexes of config\/checks\.json not evaluated/.test(n)), JSON.stringify(r.notes))
       assert.ok(r.fired.some((x) => x.source === 'coverage'), JSON.stringify(r.fired))
       assert.equal(r.lane, 'NITS')
@@ -841,6 +847,19 @@ test('trusted checks.json (user or plugin): its regexes stay in the core, the po
     const r = await review(input(newFile('README.md', ['Text.'])), config(), deps(backendOf(fake.url), fetchTransport(), { matchProjectPaths }))
     assert.equal(calls, 0)
     assert.equal(r.values.docs_only.value, 1)
+    assert.equal(r.values.touches_tests.value, 0)
+  })
+})
+
+test('touches_tests: 1 when any path of the diff, a rename\'s old name included, is a test, CI or test-tool file', async () => {
+  await withFake({}, async (fake) => {
+    const run = async (diff: string): Promise<number | undefined> =>
+      (await review(input(diff), config(), deps(backendOf(fake.url), fetchTransport()))).values.touches_tests?.value
+    assert.equal(await run(newFile('resources/js/Components/Logo.vue', ['<svg/>'])), 0)
+    assert.equal(await run(newFile('src/app.ts', ['export const a = 1']) + newFile('tests/app.test.ts', ['// a test'])), 1)
+    assert.equal(await run(newFile('.github/workflows/test.yml', ['on: push'])), 1)
+    const rename = 'diff --git a/tests/old_case.py b/src/old_case.py\nsimilarity index 100%\nrename from tests/old_case.py\nrename to src/old_case.py\n'
+    assert.equal(await run(rename), 1)
   })
 })
 

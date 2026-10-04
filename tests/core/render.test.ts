@@ -63,6 +63,7 @@ function result(): ReviewResult {
       touches_auth: { value: 0.785, raw: 0.98, source: 'model' },
       adds_tests: { value: 0.785, raw: 0.98, source: 'model' },
       docs_only: { value: 0, source: 'computed' },
+      touches_tests: { value: 0, source: 'computed' },
       merge_ready: { value: 0, source: 'computed' },
       blast_radius: { value: 1, raw: 1, source: 'model', level: 'The effect stays inside one function or one endpoint, with no external callers.', confidence: 1 },
       primary_concern: { value: 0.9, raw: 1, source: 'model', choice: 'secret', confidence: 0.9 },
@@ -97,6 +98,7 @@ unreviewable: static/app.min.js
   description_matches  Description matches the diff            not evaluated
   debug_leftovers      Debug leftovers                         not evaluated
   docs_only            Docs only                               ░░░░░░░░░░░░░░░░░░░░  0.00
+  touches_tests        Tests or CI touched                     ░░░░░░░░░░░░░░░░░░░░  0.00
   merge_ready          Ready to merge                          ░░░░░░░░░░░░░░░░░░░░  0.00  (not used by the policy)
   blast_radius         Blast radius                            ███████░░░░░░░░░░░░░  1.00 (1.00)  The effect stays inside one function or one endpoint, with no externa…
   reviewer_effort      Review effort                           not evaluated

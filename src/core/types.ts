@@ -141,7 +141,7 @@ export interface CheckDef {
   invert: boolean                         // only for model probabilities
   escalation_patterns: RegExp[]           // regexes on the path, case-insensitive
   requires: ('description')[]
-  compute?: { all_files_match?: RegExp[]; from_verdict?: string }
+  compute?: { all_files_match?: RegExp[]; any_file_matches?: RegExp[]; from_verdict?: string }
   // Only for a model choice. With value the choice is a probability, and for the rest
   // of the code it counts as a noul: rules, critical, band, calibration, maximum across
   // chunks, invert. Without it, the value of a choice is its confidence and the choice
@@ -500,7 +500,8 @@ export interface ReviewDeps {
   // in a Worker with a time limit. It gets a policy with only those detectors;
   // null means timed out. Without the port they do not run and count as timed out.
   runProjectDetectors?: (p: Policy, d: ParsedDiff, meta: { title: string; description: string | null }) => Promise<DetectorResult | null>
-  // The path regexes of a project checks.json (escalation_patterns, all_files_match),
+  // The path regexes of a project checks.json (escalation_patterns, all_files_match,
+  // any_file_matches),
   // outside the core for the same reason: for every regex, the indexes of the paths it
   // matches; null means timed out. Without the port they do not run: no match and
   // partial coverage.

@@ -10,6 +10,7 @@ import {
   validateCalibration, validateChecks, validatePolicy, validateRouter,
 } from '../../src/core/config.ts'
 import { wireQuestion, hashForm, questionHash } from '../../src/core/systemone.ts'
+import { matchesAny } from '../../src/core/diff.ts'
 import { PROMPT_ORIGIN_KINDS } from '../../src/core/types.ts'
 import type { Checks, Result, Json, ConfigLayers, Policy, Problem } from '../../src/core/types.ts'
 import { phrasesForClaude, RE_MARKER } from '../helpers/fake-secrets.ts'
@@ -40,8 +41,8 @@ const policy = (): Policy => valueOf(validatePolicy(POLICY, checks(), 'policy.js
 
 test('the four default JSON files are valid', () => {
   const c = checks()
-  assert.equal(c.order.length, 15)
-  assert.deepEqual(c.order.filter((id) => c.defs[id].source === 'computed'), ['docs_only', 'merge_ready'])
+  assert.equal(c.order.length, 16)
+  assert.deepEqual(c.order.filter((id) => c.defs[id].source === 'computed'), ['docs_only', 'touches_tests', 'merge_ready'])
   assert.deepEqual(c.order.filter((id) => c.defs[id].scope === 'chunk'), [
     'hardcoded_secret', 'injection_risk', 'touches_auth', 'weakens_tests', 'weakens_expected', 'breaks_api', 'data_migration', 'debug_leftovers',
   ])
@@ -216,14 +217,37 @@ test('the original checks.json also works as a project file', () => {
   const r = valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: readText('tests/data/checks-original.json') } } })))
   assert.equal(r.sources.checks, '.jev-hooks/checks.json')
   assert.equal(r.checks.defs.hardcoded_secret.scope, 'global')
-  // it predates weakens_expected: that unless condition is dropped, on the safe side, with a note
+  // it predates weakens_expected and touches_tests: those unless conditions are dropped,
+  // on the safe side, with a note
   assert.deepEqual(r.warnings, [
     'config/policy.json /lanes/2/rules/2/unless/1/check: unless condition dropped: "weakens_expected" is not defined in .jev-hooks/checks.json, so the rule fires without it',
+    'config/policy.json /lanes/2/rules/2/unless/2/check: unless condition dropped: "touches_tests" is not defined in .jev-hooks/checks.json, so the rule fires without it',
   ])
   assert.deepEqual(rule(r.policy, 'NITS', 'weakens_tests')[0].unless, [{ check: 'docs_only', op: 'gte', value: 0.5 }])
   // untrusted: its path regexes run outside the core
   assert.equal(r.checks.fromProject, true)
   assert.equal(valueOf(composeConfig(layers())).checks.fromProject, undefined)
+})
+
+// A test path the list misses would cancel weakens_tests on a diff that does weaken a
+// test: the list leans wide, and these are the shapes it must keep.
+test('touches_tests recognises test, CI and test-tool paths, and not application code', () => {
+  const re = checks().defs.touches_tests.compute?.any_file_matches ?? []
+  const yes = [
+    'tests/core/review.test.ts', 'test/unit.js', 'src/__tests__/a.tsx', 'spec/models/user_spec.rb', 'app/e2e/login.cy.ts',
+    'src/api.test.ts', 'src/api.spec.js', 'pkg/server_test.go', 'tests_py/test_api.py', 'test_api.py', 'conftest.py',
+    'src/UserTest.php', 'src/test/java/AppTests.java', '.github/workflows/test.yml', '.forgejo/workflows/ci.yml',
+    '.gitlab-ci.yml', 'Jenkinsfile', '.circleci/config.yml', 'jest.config.js', 'vitest.config.ts', 'vite.config.ts',
+    '.mocharc.json', 'phpunit.xml.dist', 'pytest.ini', 'tox.ini', 'setup.cfg', '.coveragerc', 'package.json',
+    'web/package.json', 'composer.json', 'pyproject.toml', 'Makefile', 'pom.xml', 'build.gradle.kts',
+  ]
+  const no = [
+    'src/app.ts', 'README.md', 'docs/testing-guide.png', 'resources/js/Components/Logo/ArgoLogoOption1.vue',
+    'app/Http/Controllers/ContestController.php', 'src/latest.ts', 'package-lock.json', 'config/policy.json',
+    'scripts/clone-prod-to-dev.sh', 'resources/views/attestato.blade.php',
+  ]
+  for (const p of yes) assert.ok(matchesAny(re, p), p)
+  for (const p of no) assert.ok(!matchesAny(re, p), p)
 })
 
 // ─── Errors: file, pointer and message ─────────────────────────────────────────
@@ -281,6 +305,8 @@ const checksCases: [string, Mod, string, RegExp][] = [
   // polynomial backtracking: six .* on a 150-character path take tens of seconds
   ['regex .*.*.*.*.*.*!$', (c) => { c.touches_auth.escalation_patterns = ['.*.*.*.*.*.*!$'] }, '/touches_auth/escalation_patterns/0', /consecutive quantifiers/],
   ['regex \\w*\\w*… in all_files_match', (c) => { c.docs_only.compute.all_files_match = ['\\w*\\w*\\w*\\w*\\w*!$'] }, '/docs_only/compute/all_files_match/0', /consecutive quantifiers/],
+  ['regex \\w*\\w*… in any_file_matches', (c) => { c.touches_tests.compute.any_file_matches = ['\\w*\\w*\\w*\\w*\\w*!$'] }, '/touches_tests/compute/any_file_matches/0', /consecutive quantifiers/],
+  ['two ways to compute', (c) => { c.touches_tests.compute.all_files_match = ['x'] }, '/touches_tests/compute', /exactly one of all_files_match, any_file_matches and from_verdict/],
   ['regex (?:.*)-?(?:.*)', (c) => { c.touches_auth.escalation_patterns = ['(?:.*)-?(?:.*)x$'] }, '/touches_auth/escalation_patterns/0', /consecutive quantifiers/],
   ['regex that does not compile', (c) => { c.touches_auth.escalation_patterns = ['(auth'] }, '/touches_auth/escalation_patterns/0', /invalid regex/],
   ['regex over 300 characters', (c) => { c.touches_auth.escalation_patterns = ['a'.repeat(301)] }, '/touches_auth/escalation_patterns/0', /at most 300/],
@@ -959,10 +985,10 @@ test('project checks.json: ids unknown to the trusted layers become project_chec
   const r = valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } } })))
   assert.equal(r.sources.checks, '.jev-hooks/checks.json')
   assert.equal(r.checks.fromProject, true)
-  // the file's fifteenth check: the plugin's fourteen, then the repo's
-  assert.deepEqual(r.checks.added, ['project_check_16'])
-  assert.equal(r.checks.order[15], 'project_check_16')
-  assert.equal(r.checks.defs.project_check_16.instructions, 'x?')
+  // the file's seventeenth check: the plugin's sixteen, then the repo's
+  assert.deepEqual(r.checks.added, ['project_check_17'])
+  assert.equal(r.checks.order[16], 'project_check_17')
+  assert.equal(r.checks.defs.project_check_17.instructions, 'x?')
   assert.equal(r.checks.order.includes('touches_auth'), true)
   // the project's label does not stay even in the effective configuration
   for (const id of r.checks.order) assert.equal(r.checks.defs[id].label, id)
@@ -989,35 +1015,35 @@ test('project policy.json: rules on replaced checks are translated, new detector
     policy: { path: '.jev-hooks/policy.json', text: JSON.stringify(p) },
   } })))
   assert.deepEqual(r.warnings, [])
-  assert.deepEqual(rule(r.policy, 'BLOCK', 'project_check_16'), [
-    { check: 'project_check_16', op: 'gte', value: 0.9, unless: [{ check: 'project_check_16', op: 'lt', value: 0.1 }], fromProject: true },
+  assert.deepEqual(rule(r.policy, 'BLOCK', 'project_check_17'), [
+    { check: 'project_check_17', op: 'gte', value: 0.9, unless: [{ check: 'project_check_17', op: 'lt', value: 0.1 }], fromProject: true },
   ])
   const names = r.policy.detectors.filter((d) => d.fromProject).map((d) => [d.name, d.check])
   // the position is the one in the file's list: the second is an existing detector
-  assert.deepEqual(names, [['project_detector_1', 'project_check_16'], ['project_detector_3', undefined]])
+  assert.deepEqual(names, [['project_detector_1', 'project_check_17'], ['project_detector_3', undefined]])
   assert.equal(r.policy.detectors.find((d) => d.name === 'stripe_live')?.floor, 'BLOCK')
   for (const x of HOSTILE_IDS) assert.ok(!JSON.stringify(r.policy.detectors.map((d) => d.name)).includes(x), x)
 })
 
 test('replaced names: a trusted id that already has that name is not overwritten', () => {
   const u = structuredClone(CHECKS)
-  u.project_check_16 = { type: 'noul', instructions: 'id from the user file' }
+  u.project_check_17 = { type: 'noul', instructions: 'id from the user file' }
   const user = { checks: { path: '~/.config/jev-hooks/checks.json', text: JSON.stringify(u) } }
   const withProject = (c: unknown): Checks => valueOf(composeConfig(layers({
     user, project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } },
   }))).checks
-  // the project's fifteenth check would take the name of a trusted id: a suffix
+  // the project's seventeenth check would take the name of a trusted id: a suffix
   const c = structuredClone(CHECKS)
   c[HOSTILE_IDS[0]] = { type: 'noul', instructions: 'from the project' }
   const r = withProject(c)
-  assert.deepEqual(r.added, ['project_check_16_2'])
-  assert.equal(r.defs.project_check_16_2.instructions, 'from the project')
+  assert.deepEqual(r.added, ['project_check_17_2'])
+  assert.equal(r.defs.project_check_17_2.instructions, 'from the project')
   // a project check with that id is known and stays as it is
   const d = structuredClone(c)
-  d.project_check_16 = { type: 'noul', instructions: 'from the project, known id' }
+  d.project_check_17 = { type: 'noul', instructions: 'from the project, known id' }
   const s = withProject(d)
-  assert.deepEqual(s.added, ['project_check_16_2'])
-  assert.equal(s.defs.project_check_16.instructions, 'from the project, known id')
+  assert.deepEqual(s.added, ['project_check_17_2'])
+  assert.equal(s.defs.project_check_17.instructions, 'from the project, known id')
 })
 
 test('warnings about a project file: valid ids chosen by the file are not quoted, trusted ones are', () => {
