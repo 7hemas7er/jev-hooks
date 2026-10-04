@@ -5,6 +5,17 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `breaks_api` no longer notes a documentation-only commit: two of its three false
+  notes on 79 real commits of other repositories were documentation alone (0.999 and
+  0.94). On the bench the positives are the same and the holdout's false notes drop
+  from 6 to 5 of 105.
+- `docs/evaluation.md`: the real commits of other repositories grow to 79, with the
+  first real `touches_auth` positives (an OpenID Connect login with Keycloak), both
+  caught. `bench/README.md`: a server folder the deployed program runs is application
+  code.
+
 ## 0.15.0 — 2026-10-03
 
 A status line under the prompt: the version the session runs, a newer one installed,
