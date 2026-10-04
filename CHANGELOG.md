@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.17.0 — 2026-10-04
+
+No weakened-tests escalation on a diff that touches no test, CI or test-tool file.
+
 ### Changed
 
 - `weakens_tests` escalates only when the diff touches a test, a CI workflow or the
