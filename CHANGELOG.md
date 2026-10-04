@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- The protection of 0.17.1 covered only the checks computed by code: a project
+  `checks.json` could still rewrite `weakens_expected`, a question to the model that
+  cancels `weakens_tests` below 0.10, into one whose answer is always no. Every check an
+  `unless` of a trusted rule names now keeps its trusted definition too. Found by a
+  security review of 0.17.1 before it was pushed.
+
 ## 0.17.1 — 2026-10-04
 
 The weakened-tests gate of 0.17.0 cannot be loosened from a repository, and knows more test files.

@@ -256,7 +256,9 @@ test('hook: with a hostile .jev-hooks/ already committed, an escalation deny, th
     assert.equal(cfg.sources.checks, '.jev-hooks/checks.json')
     assert.match(cfg.sources.policy, /\/config\/policy\.json \+ \.jev-hooks\/policy\.json \(restrictions only\)$/)
     assert.deepEqual(cfg.modifiedRules, [])
-    assert.deepEqual(cfg.warnings, [])
+    // weakens_expected is an unless of a trusted rule: its trusted text stays, with a
+    // note that quotes nothing of the file
+    assert.deepEqual(cfg.warnings, ['.jev-hooks/checks.json /weakens_expected: a condition of the trusted rules, which a repository cannot change: the trusted definition applies'])
     assert.equal(cfg.checks.fromProject, true)
     // the instructions stay (they go to the backend), the label does not: nothing of the project's ever comes out
     assert.match(String(cfg.checks.defs.touches_auth.instructions), RE_MARKER)

@@ -222,8 +222,8 @@ test('the original checks.json also works as a project file', () => {
   // predates weakens_expected and touches_tests: those unless conditions are dropped,
   // on the safe side, with a note
   assert.deepEqual(r.warnings, [
-    '.jev-hooks/checks.json /docs_only: computed by the trusted configuration, which a repository cannot change: the trusted definition applies',
-    '.jev-hooks/checks.json /merge_ready: computed by the trusted configuration, which a repository cannot change: the trusted definition applies',
+    '.jev-hooks/checks.json /docs_only: a condition of the trusted rules, which a repository cannot change: the trusted definition applies',
+    '.jev-hooks/checks.json /merge_ready: a condition of the trusted rules, which a repository cannot change: the trusted definition applies',
     'config/policy.json /lanes/2/rules/2/unless/1/check: unless condition dropped: "weakens_expected" is not defined in .jev-hooks/checks.json, so the rule fires without it',
     'config/policy.json /lanes/2/rules/2/unless/2/check: unless condition dropped: "touches_tests" is not defined in .jev-hooks/checks.json, so the rule fires without it',
   ])
@@ -261,7 +261,7 @@ test('touches_tests recognises test, CI and test-tool paths, and not application
   for (const p of no) assert.ok(!matchesAny(re, p), p)
 })
 
-test('project checks.json: the checks the trusted layers compute keep their definition, any_file_matches can only grow', () => {
+test('project checks.json: the checks an unless of a trusted rule names, and the computed ones, keep their definition; any_file_matches can only grow', () => {
   const trusted = checks()
   const withChecks = (mod: (c: any) => void) => {
     const c = structuredClone(CHECKS)
@@ -269,7 +269,7 @@ test('project checks.json: the checks the trusted layers compute keep their defi
     return valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } } })))
   }
   const sources = (re: readonly RegExp[] | undefined): string[] => (re ?? []).map((x) => x.source)
-  const NOTE = /computed by the trusted configuration, which a repository cannot change/
+  const NOTE = /a condition of the trusted rules, which a repository cannot change/
   // touches_tests matching nothing would cancel weakens_tests on every diff
   const never = withChecks((c) => { c.touches_tests.compute.any_file_matches = ['(?!)'] })
   assert.deepEqual(sources(never.checks.defs.touches_tests.compute?.any_file_matches), [...sources(trusted.defs.touches_tests.compute?.any_file_matches), '(?!)'])
@@ -284,6 +284,14 @@ test('project checks.json: the checks the trusted layers compute keep their defi
   const asked = withChecks((c) => { c.touches_tests = { type: 'noul', instructions: 'x?' } })
   assert.equal(asked.checks.defs.touches_tests.source, 'computed')
   assert.ok(asked.warnings.some((w) => /\/touches_tests: /.test(w)))
+  // weakens_expected is a question, but an unless of weakens_tests: a text whose answer
+  // is always no would cancel the rule
+  const sibling = withChecks((c) => { c.weakens_expected.instructions = 'Is this diff written in COBOL?' })
+  assert.deepEqual(sibling.checks.defs.weakens_expected.instructions, trusted.defs.weakens_expected.instructions)
+  assert.ok(sibling.warnings.some((w) => /\/weakens_expected: a condition of the trusted rules/.test(w)), JSON.stringify(sibling.warnings))
+  // a question no trusted unless names stays the project's to ask
+  const own = withChecks((c) => { c.touches_auth.instructions = 'Does the diff touch login code?' })
+  assert.equal(own.checks.defs.touches_auth.instructions, 'Does the diff touch login code?')
   // dropped: the unless that names it goes, and the rule fires
   const dropped = withChecks((c) => { delete c.touches_tests })
   assert.equal(Object.hasOwn(dropped.checks.defs, 'touches_tests'), false)
@@ -959,7 +967,7 @@ test('project: problems and notes about project files quote neither keys nor val
       /\/primary_concern\/value: (option \(text not shown\) is not among those in criteria|expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\))/],
     ['value form', withChecks((c) => { c.primary_concern.value = f() }), /\/primary_concern\/value: expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\)/],
     ['regex that does not compile', withChecks((c) => { c.touches_auth.escalation_patterns = [`(${f()}`] }), /invalid regex: it does not compile in JavaScript/],
-    ['from_verdict lane', withChecks((c) => { c.merge_ready.compute.from_verdict = f() }), /\/merge_ready: computed by the trusted configuration, which a repository cannot change: the trusted definition applies/],
+    ['from_verdict lane', withChecks((c) => { c.merge_ready.compute.from_verdict = f() }), /\/merge_ready: a condition of the trusted rules, which a repository cannot change: the trusted definition applies/],
     ['broken JSON', [valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: `{"a": ${f()}}` } } }))).warnings.join('\n')], /invalid JSON \(/],
     ['top-level key', withPolicy({ [f()]: 1 }), /\/‹key›: unknown field/],
     ['lane name', withPolicy({ lanes: [{ name: f(), rules: [] }] }), /unknown lane \(text not shown\) \(lanes: BLOCK/],
