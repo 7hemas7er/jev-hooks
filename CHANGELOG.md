@@ -14,6 +14,8 @@ a release is a separate `chore(release): X.Y.Z` commit.
   escalated at 0.55. On the bench all 47 positives keep the rule and the numbers do not
   change. If a project's path regexes time out, `touches_tests` gets no value and the
   rule fires as before.
+- `docs/evaluation.md`: the real commits of other repositories grow to 88, the first
+  ones reviewed by 0.16.0.
 
 ## 0.16.0 — 2026-10-04
 

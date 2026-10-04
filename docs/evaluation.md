@@ -245,10 +245,10 @@ rule without its second reading. The two `injection_risk` positives are literal 
 (environment variables in a fetched URL and in an executed path), the `touches_auth`
 one an example Caddy configuration.
 
-A second set (2026-10-01, extended 2026-10-04): 79 commits of three other repositories
-of the maintainer, two in PHP and one in TypeScript, reviewed by 0.6.0 to 0.11.0 with
+A second set (2026-10-01, extended 2026-10-04): 88 commits of three other repositories
+of the maintainer, two in PHP and one in TypeScript, reviewed by 0.6.0 to 0.16.0 with
 the same question texts. They were joined with the log in the same way and labelled by
-two agents with the definitions above, who agreed on 707 of the 711 labels; a third
+two agents with the definitions above, who agreed on 788 of the 792 labels; a third
 agent decided the four they did not (two `breaks_api`, two `adds_tests`). One label
 moved when the definition of application code was settled for stylesheets. The labelled
 rows stay out of this repository: those repositories are private. With the rules of this
@@ -256,43 +256,54 @@ version:
 
 | Question | Threshold | False alarms | Positives caught |
 |---|---:|---:|---:|
-| `hardcoded_secret` | 0.15 | 5 of 79 | none in the set |
-| `weakens_tests` | 0.50, second reading | 2 of 79 | none in the set |
-| `touches_auth` | 0.70 | 3 of 76 | 3 of 3 |
-| `injection_risk` | 0.99 | 1 of 77 | 0 of 2 |
-| `adds_tests` (missing tests) | 0.70 | 7 of 41 | 23 of 38 |
-| `breaks_api` | 0.90, unless docs only | 1 of 77 | 0 of 2 |
-| `data_migration` | 0.76 | 0 of 78 | 0 of 1 |
-| `debug_leftovers` | 0.40 | 2 of 79 | none in the set |
+| `hardcoded_secret` | 0.15 | 7 of 88 | none in the set |
+| `weakens_tests` | 0.50, second reading, tests touched | 3 of 88 | none in the set |
+| `touches_auth` | 0.70 | 3 of 84 | 3 of 4 |
+| `injection_risk` | 0.99 | 1 of 86 | 0 of 2 |
+| `adds_tests` (missing tests) | 0.70 | 8 of 46 | 25 of 42 |
+| `breaks_api` | 0.90, unless docs only | 2 of 85 | 1 of 3 |
+| `data_migration` | 0.76 | 0 of 86 | 1 of 2 |
+| `debug_leftovers` | 0.40 | 3 of 88 | none in the set |
 
 `touches_auth` met real authentication work here, an OpenID Connect login with Keycloak:
 the production realm (login policy, redirect addresses, the role claim the application
 reads) at 0.74 and a route table with a minimum access level per route at 0.96, both
 caught. Its three false alarms, at 0.87 to 0.98, are file permissions on disk, a
 development Keycloak and a container's configuration: above the threshold and among the
-positives, so no threshold removes them. The `hardcoded_secret` escalations are the four
-of one PHP repository, at 0.16 to 0.54, one of them on planning notes in Markdown, and
-the development Keycloak at 0.22, whose login probe falls back to a literal client
-secret and whose realm holds trivial passwords: both labellers took them for test values
-of a throwaway container, a close call the definition's "real fallback" leaves open.
-Across the 123 commits of the two sets, 7 escalations on that question and no secret; at
-0.10 there were 13, and the move to 0.15 removed the six between 0.107 and 0.14, with
+positives, so no threshold removes them. The one it missed, at 0.14, is a development
+script that clones the production database and blanks every user's password and
+session: it changes who can log in to the copy, which the definition counts. The
+`hardcoded_secret` escalations are six of one PHP repository, at 0.16 to 0.54, one of
+them on planning notes in Markdown, one on three deleted logo components and one on a
+script that prints a weak development password, and the development Keycloak at 0.22,
+whose login probe falls back to a literal client secret and whose realm holds trivial
+passwords: both labellers took them for test values of a throwaway container, a close
+call the definition's "real fallback" leaves open. Across the 132 commits of the two
+sets, 9 escalations on that question and no secret; at 0.10 there would be 15. The move
+to 0.15 removed the escalations between 0.107 and 0.14, with
 the bench's positives unchanged. That move looked at both bench sets, so the holdout no
 longer measures that threshold blind. Going higher would cost the holdout's positives at
 0.199 and 0.245. The `weakens_tests` escalations are an expected value changed together
 with the code that computes it (second reading at 0.15, just above its 0.10, which stays
-because one of the holdout's positives has it at 0.179) and a CI workflow that runs the
-tests on more branches. The `injection_risk` escalation, at 0.997, is a front-end script
+because one of the holdout's positives has it at 0.179), a CI workflow that runs the
+tests on more branches, and an assertion replaced together with the script it checks
+(second reading 0.26). A fourth, three components deleted with no test in the diff
+(0.55, second reading 0.57), is why the rule now needs a test, CI or test-tool file in
+the diff (`touches_tests`): every weakening the definitions list needs one, the bench
+keeps all 47 of its positives, and its numbers do not change. The `injection_risk` escalation, at 0.997, is a front-end script
 that fills `innerHTML` with numbers and escaped text; 0.998 would remove it and keep
 every dev positive, but lose the holdout's positive at 0.994, so 0.99 stays.
 `breaks_api` noted two documentation-only commits at 0.94 and 0.999, which is why it now
-skips them; the one left is a page's script. The `adds_tests` note misses 15 of its 38
+skips them; the two left are a page's script and a dashboard whose label and total
+changed (0.90). The `adds_tests` note misses 17 of its 42
 positives, mostly early commits that add whole pages of a new application without a
 test. Both `injection_risk` positives are literal ones: a file name joined into a path
 on an in-memory file system, and a command-line output folder joined into a path by a
-script that generates test data. The two `breaks_api` positives, an exported interface
-changed and a global function of a browser script removed, scored 0.34 and 0.83; the
-`data_migration` one, stored data converted with no way back, 0.37. There are still too
+script that generates test data. Of the three `breaks_api` positives, three exported
+components deleted scored 0.97, while an exported interface changed and a global
+function of a browser script removed scored 0.34 and 0.83. Of the two `data_migration`
+ones, the database clone script that rewrites and deletes rows in bulk scored 0.96, and
+stored data converted with no way back 0.37. There are still too
 few positives on the questions that escalate for a fit from real commits.
 
 ## Planned
