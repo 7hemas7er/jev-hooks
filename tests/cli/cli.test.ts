@@ -19,7 +19,7 @@ import { parseDiff } from '../../src/core/diff.ts'
 import { formatNumber } from '../../src/core/numbers.ts'
 import { detect } from '../../src/core/detectors.ts'
 import type { ReviewResult } from '../../src/core/types.ts'
-import { startFake } from '../helpers/fake-systemone.ts'
+import { startFake, REFUSED_URL } from '../helpers/fake-systemone.ts'
 import type { FakeServer } from '../helpers/fake-systemone.ts'
 import { createRepo } from '../helpers/git-repo.ts'
 
@@ -30,7 +30,6 @@ const BIN = join(ROOT, 'bin', 'jev-review.mjs')
 let base = ''
 let demo: Record<string, string> = {}
 let fake: FakeServer
-let closedPort = ''
 
 interface Execution { code: number; out: string; err: string }
 
@@ -83,9 +82,6 @@ before(async () => {
   base = mkdtempSync(join(tmpdir(), 'jev-hooks-cli-'))
   demo = generateDemo(join(base, 'demo'), { seed: 20260925 })
   fake = await startFake({ scenario: 'demo' })
-  const off = await startFake()
-  closedPort = off.url
-  await off.close()
 })
 
 after(async () => {
@@ -166,7 +162,7 @@ test('the same diff with the threshold at 0.95 in an uncommitted .jev-hooks/: th
 })
 
 test('known-secret.diff with the server off: BLOCK from the stripe_live floor (exit 3)', async () => {
-  const e = await jev(['--diff', demo['known-secret.diff'], '--no-color'], { env: makeEnv({ url: closedPort }) })
+  const e = await jev(['--diff', demo['known-secret.diff'], '--no-color'], { env: makeEnv({ url: REFUSED_URL }) })
   assert.equal(e.code, 3, e.err)
   assert.equal(verdict(e.out), 'BLOCK')
   assert.match(e.out, /floor: stripe_live in src\/payments\.py:3/)
@@ -344,7 +340,7 @@ test('status: GET /v1/models plus a real decision', async () => {
   assert.doesNotMatch(e.out, /fake-fp-1|rizzo-spark|uncalibrated_/)
   assert.match(e.out, /profile: rizzo-provisional \(uncalibrated\) · calibration client/)
   assert.match(e.out, /probe decision: hardcoded_secret in \d+\.\d\d s/)
-  const off = await jev(['status'], { env: makeEnv({ url: closedPort }) })
+  const off = await jev(['status'], { env: makeEnv({ url: REFUSED_URL }) })
   assert.equal(off.code, 4)
   assert.match(off.err, /unreachable/)
 })

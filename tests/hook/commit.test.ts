@@ -14,7 +14,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rea
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startFake } from '../helpers/fake-systemone.ts'
+import { startFake, REFUSED_URL } from '../helpers/fake-systemone.ts'
 import type { FakeServer, Scenario } from '../helpers/fake-systemone.ts'
 import { hostileConfig, createRepo, hostileSubmodule } from '../helpers/git-repo.ts'
 import type { TestRepo } from '../helpers/git-repo.ts'
@@ -39,7 +39,6 @@ const SCENARIO: Scenario = {
 
 let base = ''
 let fake: FakeServer
-let closedPort = ''
 const rnd = generator(20260925)
 // every output of every hook, for the final check on the key
 const exited: string[] = []
@@ -47,9 +46,6 @@ const exited: string[] = []
 before(async () => {
   base = mkdtempSync(join(tmpdir(), 'jev-hooks-hook-'))
   fake = await startFake({ scenario: SCENARIO })
-  const off = await startFake()
-  closedPort = off.url
-  await off.close()
 })
 
 after(async () => {
@@ -575,7 +571,7 @@ test('input that is not JSON → no output; input over 1 MB → one line, never 
 // ─── Visible fail-open and floors ─────────────────────────────────────────────
 
 test('server off → systemMessage without a decision, once per session', async () => {
-  const pr = trial({ url: closedPort })
+  const pr = trial({ url: REFUSED_URL })
   try {
     pr.r.write('src/sum.py', 'def add(a, b):\n    return a + b\n')
     pr.r.git('add', '-A')
@@ -593,7 +589,7 @@ test('server off → systemMessage without a decision, once per session', async 
 })
 
 test('server off with sk_live_… → deny from the floor', async () => {
-  const pr = trial({ url: closedPort })
+  const pr = trial({ url: REFUSED_URL })
   try {
     pr.r.write('src/payments.py', `STRIPE_KEY = "${stripeLiveKey(rnd)}"\n`)
     pr.r.git('add', '-A')
@@ -647,7 +643,7 @@ test('black hole without floors → exit within total_ms (from the start, git in
 })
 
 test('on_error "ask" from the project → ask with the reason', async () => {
-  const pr = trial({ url: closedPort })
+  const pr = trial({ url: REFUSED_URL })
   try {
     pr.r.write('.jev-hooks/policy.json', JSON.stringify({ hook: { on_error: 'ask' } }))
     pr.r.commit('project rules')
@@ -785,7 +781,7 @@ test('git stage, git add -N with -a or with the paths, git add of a new file wit
   // Server off: all that counts is that the hook sees the file the commit will contain.
   // If it did not see it, the diff would be empty and the hook would stay silent, AKIA
   // floor included.
-  const pr = trial({ url: closedPort })
+  const pr = trial({ url: REFUSED_URL })
   try {
     pr.r.write('src/conf.py', `AWS_KEY = "${awsKey(rnd)}"\n`)
     for (const c of [

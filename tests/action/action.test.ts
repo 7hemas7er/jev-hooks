@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startFake } from '../helpers/fake-systemone.ts'
+import { startFake, REFUSED_URL } from '../helpers/fake-systemone.ts'
 import type { FakeServer, Scenario } from '../helpers/fake-systemone.ts'
 import { createRepo } from '../helpers/git-repo.ts'
 import { generator, injectionPhrase, stripeLiveKey } from '../helpers/fake-secrets.ts'
@@ -35,14 +35,10 @@ const rnd = generator(20260928)
 
 let base = ''
 let backend: FakeServer
-let closedPort = ''
 
 before(async () => {
   base = mkdtempSync(join(tmpdir(), 'jev-hooks-action-'))
   backend = await startFake({ scenario: SCENARIO })
-  const off = await startFake()
-  closedPort = off.url
-  await off.close()
 })
 
 after(async () => {
@@ -269,7 +265,7 @@ test('backend not configured or unreachable → neutral, with the reason; not co
       assert.equal(reviews(), before)
     })
     await withGitHub({ diff: NITS_DIFF }, async (gh) => {
-      const e = await action(t2, gh, { url: closedPort })
+      const e = await action(t2, gh, { url: REFUSED_URL })
       assert.equal(e.code, 0)
       assert.equal(checkRun(gh).conclusion, 'neutral')
     })

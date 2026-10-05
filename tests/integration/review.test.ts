@@ -20,7 +20,7 @@ import type {
   Backend, Checks, ReviewConfig, MaskPair, ReviewDeps, Failure, Result, HttpOutcome, ReviewInput, ConfigLayers, Policy,
   HttpRequest, ReviewResult, Transport,
 } from '../../src/core/types.ts'
-import { startFake } from '../helpers/fake-systemone.ts'
+import { startFake, REFUSED_URL } from '../helpers/fake-systemone.ts'
 import type { FakeServer, FakeOptions, RecordedRequest } from '../helpers/fake-systemone.ts'
 import { realClock, fetchTransport } from '../helpers/fetch-transport.ts'
 
@@ -130,14 +130,6 @@ function scripted(real: Transport, script: Record<number, HttpOutcome>): Transpo
     return Object.hasOwn(script, k) ? script[k] : real(r)
   }
   return Object.assign(t, { calls })
-}
-
-// A free but closed port: the connection is refused at once (ECONNREFUSED).
-async function closedPort(): Promise<string> {
-  const f = await startFake()
-  const url = f.url
-  await f.close()
-  return url
 }
 
 function assertNever(r: ReviewResult, forbiddenText: string): void {
@@ -304,7 +296,7 @@ test('error matrix: backend not configured: no request, exit 4, class backend_un
 })
 
 test('error matrix: network failure before sending: connect_attempts attempts with backoff, then an error (fail-open), class N', async () => {
-  const url = await closedPort()
+  const url = REFUSED_URL
   const t = fetchTransport()
   const r = await review(input(diffOf(2)), config({ policy: policyWith({ network: { connect_attempts: 3, backoff_ms: 20 } }) }), deps(backendOf(url), t))
   assert.equal(r.outcome, 'error')
@@ -689,7 +681,7 @@ test('error matrix: diff over the limits and unreviewable files: priority chunks
 test('error matrix: .jev-hooks/ rules that differ from HEAD', { todo: 'outside the core: HEAD for the hook, the working tree for the CLI in tests/node/file-config.test.ts and tests/cli/cli.test.ts; at least ask from the hook in tests/hook/commit.test.ts' })
 
 test('error matrix: floor with the backend down: the floor\'s lane, in CI too', async () => {
-  const url = await closedPort()
+  const url = REFUSED_URL
   const diff = newFile('src/config.py', [`AWS_ACCESS_KEY_ID = "${AWS_KEY}"`])
   const r = await review(input(diff), config({ policy: policyWith({ network: { connect_attempts: 1 } }) }), deps(backendOf(url)))
   assert.equal(r.outcome, 'error')

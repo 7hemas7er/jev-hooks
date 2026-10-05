@@ -334,6 +334,13 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
+// A backend that refuses the connection at once (ECONNREFUSED). Not a port freed by
+// closing a fake: test files run in parallel, and another one's fake could take it in
+// the meantime and answer 404. Port 4 is privileged (no fake can bind it, they take
+// ephemeral ports), nothing listens on it, and fetch does not count it among the
+// "bad ports" it refuses before connecting.
+export const REFUSED_URL = 'http://127.0.0.1:4'
+
 export async function startFake(o: FakeOptions = {}): Promise<FakeServer> {
   const mode: FakeMode = o.mode ?? 'rizzo'
   const scenario: Scenario = typeof o.scenario === 'string' ? loadScenario(o.scenario) : o.scenario ?? {}

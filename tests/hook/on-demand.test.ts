@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { onDemandCommand, parseReviewArgs } from '../../src/hook/on-demand.ts'
-import { startFake } from '../helpers/fake-systemone.ts'
+import { startFake, REFUSED_URL } from '../helpers/fake-systemone.ts'
 import type { FakeServer, Scenario } from '../helpers/fake-systemone.ts'
 import { createRepo } from '../helpers/git-repo.ts'
 import type { TestRepo } from '../helpers/git-repo.ts'
@@ -28,15 +28,11 @@ const SCENARIO: Scenario = { rules: [{ if_state_contains: 'console.log', answers
 
 let base = ''
 let fake: FakeServer
-let closedPort = ''
 const exited: string[] = []
 
 before(async () => {
   base = mkdtempSync(join(tmpdir(), 'jev-hooks-on-demand-'))
   fake = await startFake({ scenario: SCENARIO })
-  const off = await startFake()
-  closedPort = off.url
-  await off.close()
 })
 
 after(async () => {
@@ -305,7 +301,7 @@ test('uncommitted .jev-hooks/ rules → the HEAD rules, and a note that says so'
 
 test('/jev-status → the probe as a <jev-status> block; an unreachable backend or an argument → an error block', async () => {
   const pr = trial()
-  const down = trial({ url: closedPort })
+  const down = trial({ url: REFUSED_URL })
   try {
     const e = await typed(pr, 'jev-hooks:jev-status')
     onlyContext(e, 'UserPromptExpansion')
