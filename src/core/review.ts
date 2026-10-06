@@ -301,6 +301,32 @@ export function valuesFromPaths(checks: Checks, file: readonly FileDiff[], unmat
   return out
 }
 
+// The chunks that count for a check with chunks_matching: those with a file that the
+// named computed check matches, by the same any_file_matches that gives it its value.
+// undefined (every chunk counts) without the field; when a project's path regexes were
+// not evaluated, since then nothing is known to match; and when a path it matches was
+// sent in no chunk (unsent: the diff's paths, old names of renames included, that no
+// chunk holds), since the chunk where the question could be true is then missing. So
+// the filter only ever drops chunks of a diff whose matching files were all seen, and
+// extra paths in the list can only add chunks to those that count.
+export function chunkFilter(
+  checks: Checks, id: string, o: { unmatched?: boolean; unsent?: readonly string[] } = {},
+): ((files: readonly string[]) => boolean) | undefined {
+  const m = checks.defs[id]?.chunks_matching
+  if (m === undefined || o.unmatched === true || !Object.hasOwn(checks.defs, m)) return undefined
+  const any = checks.defs[m].compute?.any_file_matches
+  if (!any || (o.unsent ?? []).some((x) => matchesAny(any, x))) return undefined
+  return (files) => files.some((x) => matchesAny(any, x))
+}
+
+// The diff's paths that no answered chunk holds: ignored, omitted, beyond the chunk
+// limit, in a chunk whose answer never came, and the old name of every renamed file
+// (a chunk lists files by their new name).
+export function unsentPaths(file: readonly FileDiff[], chunks: readonly { files: readonly string[] }[]): string[] {
+  const sent = new Set(chunks.flatMap((x) => x.files))
+  return file.flatMap((f) => (f.oldPath === undefined ? [f.path] : [f.path, f.oldPath])).filter((x) => !sent.has(x))
+}
+
 // ─── review() ─────────────────────────────────────────────────────────────────
 
 export async function review(i: ReviewInput, c: ReviewConfig, deps: ReviewDeps): Promise<ReviewResult> {
@@ -711,7 +737,8 @@ async function reviewInner(
   }
   for (const [id, list] of noul) {
     const def = checks.defs[id]
-    const v = aggregateNoul(list, { invert: def.invert, perChunk: def.scope === 'chunk' })
+    const counts = chunkFilter(checks, id, { unmatched: pathsUnmatched, unsent: unsentPaths(d.files, list) })
+    const v = aggregateNoul(list, { invert: def.invert, perChunk: def.scope === 'chunk', ...(counts ? { counts } : {}) })
     if (v) values[id] = v
   }
   Object.assign(values, valuesFromPaths(checks, d.files, pathsUnmatched))

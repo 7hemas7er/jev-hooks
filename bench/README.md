@@ -417,6 +417,25 @@ node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \
   --out bench/results/YYYY-MM-DD-holdout-weakens --date YYYY-MM-DD
 ```
 
+## Diffs split into chunks (2026-10-07, no dataset here)
+
+Every row of the sets above fits in one chunk, while the live false alarms of
+`weakens_tests` came from diffs split into several. The fourth round
+(`variants-weakens-3.json`) was measured on two sets that are not in the repository:
+- **the bench split into chunks**: each row of `dev.jsonl` and `live.jsonl` with a
+  `weakens_tests` label (145, 19 positives), followed by the diff that added
+  `src/action/main.ts` in commit 4caf96f, 341 lines of application code with no test.
+  It splits each row into four or more chunks and holds no weakening, so the labels stay;
+  it is rebuilt from those two files and that commit;
+- **126 real commits** of three repositories, two of them private, split into several
+  chunks and touching a test, CI or test-tool file. Two agents per repository labelled
+  them with the definition above, from the commits themselves: 0 weakenings, 252 of 252
+  labels agreeing. Their diffs stay out of the repository.
+
+`results/2026-10-07-weakens3-dev` and `-live` are the same variants on the single-chunk
+sets. `docs/evaluation.md` gives the numbers; `chunks_matching` in `config/checks.json`
+is what came of it.
+
 ## `live-reviews.jsonl`: commits the live reviewer saw, labelled for every question
 
 44 commits of this repo that the installed reviewer reviewed between 2026-09-27 and

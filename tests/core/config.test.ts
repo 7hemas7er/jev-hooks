@@ -9,10 +9,11 @@ import {
   composeConfig, nativeLength, regexProblem, questionProblems, routerRestrictions, overlayPolicy, HOOK_CAP_MS,
   validateCalibration, validateChecks, validatePolicy, validateRouter,
 } from '../../src/core/config.ts'
+import { chunkFilter, unsentPaths } from '../../src/core/review.ts'
 import { wireQuestion, hashForm, questionHash } from '../../src/core/systemone.ts'
 import { matchesAny } from '../../src/core/diff.ts'
 import { PROMPT_ORIGIN_KINDS } from '../../src/core/types.ts'
-import type { Checks, Result, Json, ConfigLayers, Policy, Problem } from '../../src/core/types.ts'
+import type { Checks, Result, Json, ConfigLayers, Policy, Problem, FileDiff } from '../../src/core/types.ts'
 import { phrasesForClaude, RE_MARKER } from '../helpers/fake-secrets.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -48,6 +49,8 @@ test('the four default JSON files are valid', () => {
   ])
   // a second reading of weakens_tests: the bench labels it with that question's labels
   assert.deepEqual(c.order.filter((id) => c.defs[id].bench_labels !== undefined).map((id) => [id, c.defs[id].bench_labels]), [['weakens_expected', 'weakens_tests']])
+  // both readings of weakens_tests count only the chunks with a test, CI or test-tool file
+  assert.deepEqual(c.order.filter((id) => c.defs[id].chunks_matching !== undefined).map((id) => [id, c.defs[id].chunks_matching]), [['weakens_tests', 'touches_tests'], ['weakens_expected', 'touches_tests']])
   assert.deepEqual(c.order.filter((id) => c.defs[id].invert), ['adds_tests', 'description_matches'])
   const p = policy()
   assert.deepEqual(p.lanes.map((l) => l.name), ['BLOCK', 'SECURITY REVIEW', 'NITS', 'MERGE'])
@@ -191,6 +194,65 @@ test('checks.json: bench_labels names another probability of the file, one step 
   assert.match(bad((c) => { c.weakens_expected.bench_labels = 'blast_radius' }).join(), /bench_labels must name another check/)
   assert.match(bad((c) => { c.weakens_tests.bench_labels = 'injection_risk' }).join(), /\/weakens_expected\/bench_labels .*without bench_labels of its own/)
   assert.match(bad((c) => { c.blast_radius.bench_labels = 'weakens_tests' }).join(), /\/blast_radius\/bench_labels bench_labels only applies to/)
+})
+
+test('checks.json: chunks_matching needs scope chunk; a name that is not a path list is a note, never an error', () => {
+  const read = (mod: (c: Record<string, any>) => void, o: { fromProject?: boolean } = {}) => {
+    const c = structuredClone(CHECKS) as Record<string, any>
+    mod(c)
+    return validateChecks(c, 'checks.json', o)
+  }
+  const problems = (r: Result<Checks>): string[] => (r.ok ? [] : (r.error.problems ?? []).map((x) => `${x.pointer} ${x.message}`))
+  assert.match(problems(read((c) => { c.blast_radius.chunks_matching = 'touches_tests' })).join(), /\/blast_radius\/chunks_matching chunks_matching only applies with scope "chunk"/)
+  assert.match(problems(read((c) => { c.weakens_tests.chunks_matching = 'Touches tests' })).join(), /\/weakens_tests\/chunks_matching invalid id/)
+  // a missing check, a question, a path list of the other kind: the filter is off
+  for (const target of ['nowhere', 'injection_risk', 'docs_only']) {
+    const r = valueOf(read((c) => { c.weakens_tests.chunks_matching = target }))
+    assert.equal(r.notes?.length, 1, target)
+    assert.match(r.notes?.[0] ?? '', /\/weakens_tests\/chunks_matching: .* so every chunk counts/)
+    assert.equal(chunkFilter(r, 'weakens_tests'), undefined, target)
+  }
+  // a user file says so among the warnings
+  const user = structuredClone(CHECKS) as Record<string, any>
+  user.weakens_tests.chunks_matching = 'nowhere'
+  const composed = valueOf(composeConfig(layers({ user: { checks: { path: '~/.config/jev-hooks/checks.json', text: JSON.stringify(user) } } })))
+  assert.ok(composed.warnings.some((w) => /weakens_tests\/chunks_matching: "nowhere" is not a check/.test(w)), JSON.stringify(composed.warnings))
+  // in a project file no note: keepTrustedGates puts the trusted definition back
+  assert.equal(valueOf(read((c) => { c.weakens_tests.chunks_matching = 'nowhere' }, { fromProject: true })).notes, undefined)
+  assert.equal(valueOf(read(() => {})).notes, undefined)
+})
+
+test('chunks_matching: the chunks with a file of the named path list; off when the paths were not evaluated or a matching file was not sent', () => {
+  const c = checks()
+  const counts = chunkFilter(c, 'weakens_tests')
+  assert.ok(counts)
+  assert.equal(counts(['src/app.ts', 'tests/app.test.ts']), true)
+  assert.equal(counts(['.github/workflows/test.yml']), true)
+  assert.equal(counts(['src/app.ts', 'resources/js/Components/Logo.vue']), false)
+  assert.equal(chunkFilter(c, 'weakens_tests', { unmatched: true }), undefined)
+  assert.equal(chunkFilter(c, 'hardcoded_secret'), undefined)
+  // a test file no chunk holds: the chunk where a weakening could be is missing
+  assert.equal(chunkFilter(c, 'weakens_tests', { unsent: ['tests/big.test.ts'] }), undefined)
+  assert.ok(chunkFilter(c, 'weakens_tests', { unsent: ['src/big.ts', 'docs/logo.png'] }))
+  const file = [
+    { path: 'src/a.ts' }, { path: 'src/moved.ts', oldPath: 'tests/moved.test.ts' }, { path: 'tests/omitted.test.ts' },
+  ] as FileDiff[]
+  assert.deepEqual(unsentPaths(file, [{ files: ['src/a.ts', 'src/moved.ts'] }]), ['tests/moved.test.ts', 'tests/omitted.test.ts'])
+})
+
+test('project checks.json: chunks_matching follows the replaced name of a project check', () => {
+  const c = structuredClone(CHECKS) as Record<string, any>
+  c.own_paths = { type: 'noul', source: 'computed', compute: { any_file_matches: ['(^|/)qa/'] } }
+  c.own_question = { type: 'noul', scope: 'chunk', chunks_matching: 'own_paths', instructions: 'Does a QA script change?' }
+  const r = valueOf(composeConfig(layers({ project: { checks: { path: '.jev-hooks/checks.json', text: JSON.stringify(c) } } })))
+  const added = r.checks.added ?? []
+  assert.equal(added.length, 2)
+  const [paths, question] = added
+  assert.equal(r.checks.defs[question].chunks_matching, paths)
+  const counts = chunkFilter(r.checks, question)
+  assert.ok(counts)
+  assert.equal(counts(['qa/run.sh']), true)
+  assert.equal(counts(['src/run.sh']), false)
 })
 
 test('the user\'s original checks.json loads as it is', () => {

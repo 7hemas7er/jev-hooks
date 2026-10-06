@@ -993,3 +993,53 @@ test('a text that is not a diff is not an empty diff: an internal error, class F
   assert.equal(r.ci.class, 'untrusted_input')
   assert.equal(r.ci.conclusion, 'failure')
 })
+
+// A weakens_tests answer: the fake picks none for a choice by default, so p = 0.
+function weakening(pNone: number, option: string, id: 'weakens_tests' | 'weakens_expected'): Record<string, unknown> {
+  const keys = Object.keys(CHECKS.defs[id].criteria as object)
+  const probabilities = Object.fromEntries(keys.map((k) => [k, k === 'none' ? pNone : k === option ? 1 - pNone : 0]))
+  return { type: 'choice', choice: pNone >= 0.5 ? 'none' : option, probabilities, confidence: Math.max(pNone, 1 - pNone) }
+}
+
+// The live false alarm: a test chunk the model reads as clean, and a chunk of
+// application code alone where both readings see a weakening.
+const SPLIT = newFile('src/module_0.ts', code(15, 'm0')) + newFile('tests/module.test.ts', code(15, 't0'))
+const ON_CODE = { rules: [{ if_state_contains: 'src/module_0.ts', answers: { weakens_tests: weakening(0.1, 'test_removed', 'weakens_tests'), weakens_expected: weakening(0.5, 'expected_changed', 'weakens_expected') } }] }
+
+test('chunks_matching: a chunk of application code alone does not make weakens_tests, a chunk with a test file does', async () => {
+  await withFake({ scenario: ON_CODE }, async (fake) => {
+    const r = await review(input(SPLIT), config(), deps(backendOf(fake.url)))
+    assert.equal(r.shape, 'chunks')
+    assert.equal(r.values.touches_tests.value, 1)
+    for (const id of ['weakens_tests', 'weakens_expected']) {
+      assert.equal(r.values[id].value, 0, id)
+      assert.deepEqual(r.values[id].perChunk?.map((x) => x.files), [['tests/module.test.ts']], id)
+    }
+    assert.ok(!r.escalation.some((v) => v.check === 'weakens_tests'))
+    // the same answers with the field removed: the maximum over every chunk escalates
+    const defs = { ...CHECKS.defs }
+    for (const id of ['weakens_tests', 'weakens_expected']) {
+      const { chunks_matching: _, ...rest } = defs[id]
+      defs[id] = rest
+    }
+    const without = await review(input(SPLIT), config({ checks: { ...CHECKS, defs } }), deps(backendOf(fake.url)))
+    assert.ok(Math.abs(without.values.weakens_tests.value - 0.9) < 1e-9)
+    assert.ok(without.escalation.some((v) => v.check === 'weakens_tests'))
+  })
+  const ON_TEST = { rules: [{ if_state_contains: 'tests/module.test.ts', answers: ON_CODE.rules[0].answers }] }
+  await withFake({ scenario: ON_TEST }, async (fake) => {
+    const r = await review(input(SPLIT), config(), deps(backendOf(fake.url)))
+    assert.ok(Math.abs(r.values.weakens_tests.value - 0.9) < 1e-9)
+    assert.deepEqual(r.escalation.filter((v) => v.check === 'weakens_tests').map((v) => v.files), [['tests/module.test.ts']])
+  })
+})
+
+test('chunks_matching: with no chunk holding a test file every chunk counts, and touches_tests cancels the rule', async () => {
+  await withFake({ scenario: ON_CODE }, async (fake) => {
+    const r = await review(input(diffOf(2, 'src/module').replace(/\.py\b/g, '.ts')), config(), deps(backendOf(fake.url)))
+    assert.equal(r.values.touches_tests.value, 0)
+    assert.ok(Math.abs(r.values.weakens_tests.value - 0.9) < 1e-9)
+    assert.equal(r.values.weakens_tests.perChunk?.length, 2)
+    assert.ok(!r.escalation.some((v) => v.check === 'weakens_tests'))
+  })
+})

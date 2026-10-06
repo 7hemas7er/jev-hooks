@@ -223,6 +223,26 @@ test('aggregateNoul: maximum over the chunks of the sent question, perChunk and 
   assert.equal(aggregateNoul([{ chunk: 0, files: [], p: Number.NaN, raw: 0.5 }], { invert: false, perChunk: true }), undefined)
 })
 
+test('aggregateNoul with counts: the maximum and perChunk over the counted chunks; with none counted, every chunk', () => {
+  const chunks = [
+    { chunk: 1, files: ['tests/a.test.ts'], p: 0.2, raw: 0.2 },
+    { chunk: 2, files: ['src/a.ts'], p: 0.9, raw: 0.9 },
+    { chunk: 3, files: ['src/b.ts', 'tests/b.test.ts'], p: 0.4, raw: 0.4 },
+  ]
+  const counts = (files: readonly string[]): boolean => files.some((f) => f.startsWith('tests/'))
+  const v = aggregateNoul(chunks, { invert: false, perChunk: true, counts })
+  assert.deepEqual(v, {
+    value: 0.4, raw: 0.4, source: 'model', worst: ['src/b.ts', 'tests/b.test.ts'],
+    perChunk: [chunks[0], chunks[2]].map((x) => ({ chunk: x.chunk, files: x.files, p: x.p, raw: x.raw })),
+  })
+  const none = aggregateNoul(chunks, { invert: false, perChunk: true, counts: () => false })
+  assert.equal(none?.value, 0.9)
+  assert.equal(none?.perChunk?.length, 3)
+  // a counted chunk without a finite p does not hide the others
+  const nan = aggregateNoul([{ chunk: 1, files: ['tests/a.test.ts'], p: Number.NaN, raw: 0.5 }, chunks[1]], { invert: false, perChunk: true, counts })
+  assert.equal(nan?.value, 0.9)
+})
+
 // ─── Choice with a value ──────────────────────────────────────────────────────
 
 // A choice with none first, like the ones measured on the bench, and its value.

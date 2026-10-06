@@ -32,13 +32,13 @@ import { parseDiff } from '../src/core/diff.ts'
 import { escalation } from '../src/core/escalation.ts'
 import { formatNumber } from '../src/core/numbers.ts'
 import { planChunks } from '../src/core/chunks.ts'
-import { valuesFromPaths } from '../src/core/review.ts'
+import { chunkFilter, unsentPaths, valuesFromPaths } from '../src/core/review.ts'
 import { detect } from '../src/core/detectors.ts'
 import { sha256Hex } from '../src/core/sha256.ts'
 import { truncate } from '../src/core/state.ts'
 import { wireQuestion, questionHash } from '../src/core/systemone.ts'
 import type {
-  Checks, ComposedConfig, WireQuestion, ConfigFile, Identity, Policy, Rule, ProfileSelection, CheckValue, EscalationItem,
+  Checks, ComposedConfig, WireQuestion, ConfigFile, Identity, Policy, Rule, ProfileSelection, CheckValue, EscalationItem, FileDiff,
 } from '../src/core/types.ts'
 import { decide, evaluateRule } from '../src/core/verdict.ts'
 import { userConfigDir, displayPath } from '../src/node/file-config.ts'
@@ -187,11 +187,13 @@ function selectionFor(c: ComposedConfig, id: Identity | null): ProfileSelection 
 // The measured answers as the reviewer would have received them: one SentNoul per
 // chunk, calibrated with the chosen profile. raw.jsonl has the maximum across chunks;
 // if it also has the p of each chunk and the plan has as many chunks, those are used,
-// otherwise a single chunk with all the files (this changes only which files an item
-// cites, not the verdict nor whether there is an escalation).
+// otherwise a single chunk with all the files. That changes only which files an item
+// cites, except on a check with chunks_matching: there the single chunk keeps the
+// maximum over every chunk, as if the filter were off, so the simulation can only
+// show that check firing more often than the reviewer would.
 function valuesOf(
   answers: ReadonlyMap<string, RecordedAnswer>, checks: Checks, questions: Readonly<Record<string, WireQuestion>>, s: ProfileSelection,
-  chunks: { index: number; files: string[] }[],
+  chunks: { index: number; files: string[] }[], file: readonly FileDiff[],
 ): { values: Record<string, CheckValue>; missing: number } {
   const values: Record<string, CheckValue> = {}
   let missing = 0
@@ -212,7 +214,8 @@ function valuesOf(
     const sent: SentNoul[] = perChunk && r.chunks && r.chunks.length === chunks.length && chunks.length > 1
       ? r.chunks.map((q, k) => ({ chunk: chunks[k].index, files: chunks[k].files, p: calibrated(q), raw: q }))
       : [{ chunk: chunks[0]?.index ?? 0, files: perChunk ? all : [], p: calibrated(r.p), raw: r.p }]
-    const v = aggregateNoul(sent, { invert: def.invert, perChunk })
+    const counts = chunkFilter(checks, id, { unsent: unsentPaths(file, sent) })
+    const v = aggregateNoul(sent, { invert: def.invert, perChunk, ...(counts ? { counts } : {}) })
     if (v) values[id] = v
   }
   return { values, missing }
@@ -271,7 +274,7 @@ export function simulate(o: {
     const d = parseDiff(r.diff, { maxBytes: p.state.max_diff_bytes, maxLineChars: p.state.max_line_chars })
     const det = detect(d, meta, p)
     const plan = planChunks(d, meta, c.checks, p, { maxChunks: p.limits[ORIGIN].max_chunks, tokensPerState: p.state.tokens_per_state }, det.hits)
-    const { values, missing } = valuesOf(answers, c.checks, questions, selection, plan.chunks)
+    const { values, missing } = valuesOf(answers, c.checks, questions, selection, plan.chunks, d.files)
     Object.assign(values, valuesFromPaths(c.checks, d.files))
     const partial = { omitted: plan.omitted.length, unreviewable: plan.unreviewable.length, incomplete: missing > 0, truncated: d.truncated }
     const decision = decide(values, p, selection, det.floors, partial, hashOk)

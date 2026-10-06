@@ -571,7 +571,7 @@ export function questionProblems(v: unknown, file: string, pointer: string): Pro
 
 const CHECK_FIELDS = [
   'label', 'type', 'instructions', 'criteria', 'source', 'scope', 'critical', 'higher_is_better', 'invert',
-  'escalation_patterns', 'requires', 'compute', 'value', 'bench_labels',
+  'escalation_patterns', 'requires', 'compute', 'value', 'bench_labels', 'chunks_matching',
 ] as const
 
 // A check whose value is a model probability: a noul, or a choice with a value
@@ -637,6 +637,14 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
       benchLabels = undefined
     }
   }
+  let chunksMatching: string | undefined
+  if (o.chunks_matching !== undefined) {
+    chunksMatching = readString(l, o.chunks_matching, f('chunks_matching'), { nonEmpty: true })
+    if (chunksMatching !== undefined && !RE_ID.test(chunksMatching)) {
+      addProblem(l, f('chunks_matching'), MSG_ID)
+      chunksMatching = undefined
+    }
+  }
 
   let question: { instructions: Json; criteria?: Json } | undefined
   let compute: CheckDef['compute']
@@ -675,6 +683,7 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
   if (scope === 'chunk' && source === 'computed') addProblem(l, f('scope'), 'scope "chunk" only applies to questions asked of the model')
   else if (scope === 'chunk' && !isProbability) addProblem(l, f('scope'), `scope "chunk" only applies to ${MSG_PROBABILITY}: the value across chunks is the maximum of a probability`)
   if (invert && !isProbability) addProblem(l, f('invert'), `invert only applies to ${MSG_PROBABILITY}`)
+  if (o.chunks_matching !== undefined && scope !== 'chunk') addProblem(l, f('chunks_matching'), 'chunks_matching only applies with scope "chunk"')
   // The uncertainty band is in logit, on a probability: a critical score,
   // choice without a value or computed question would be left without a band, with the
   // dead zone around the threshold that the band is there to remove, and nobody would
@@ -695,6 +704,7 @@ function readCheck(l: Reader, v: unknown, p: string, id: string): CheckDef | und
   if (compute) def.compute = compute
   if (value) def.value = value
   if (benchLabels !== undefined) def.bench_labels = benchLabels
+  if (chunksMatching !== undefined) def.chunks_matching = chunksMatching
   return def
 }
 
@@ -731,11 +741,27 @@ export function validateChecks(json: unknown, file: string, o: { fromProject?: b
         addProblem(l, p, `bench_labels must name another check of this file that is one of ${MSG_PROBABILITY}, without bench_labels of its own`)
       }
     }
+    // chunks_matching names a path list of this file (each checks.json replaces the one
+    // below). Naming anything else only turns the filter off (chunkFilter in review.ts),
+    // which leaves the rules firing at least as often: a note, not an error. A project
+    // file gets none, since keepTrustedGates puts back the trusted definitions of the
+    // checks the rules use, and with them a valid chunks_matching.
+    if (o.fromProject !== true) {
+      for (const id of order) {
+        const m = items[id].chunks_matching
+        if (m === undefined) continue
+        const target = Object.hasOwn(items, m) ? items[m] : undefined
+        if (!target || target.source !== 'computed' || target.compute?.any_file_matches === undefined) {
+          addNote(l, childPointer(childPointer('', id), 'chunks_matching'), `${quoteFor(l, m)} is not a check of this file with source "computed" and compute.any_file_matches, so every chunk counts`)
+        }
+      }
+    }
     if (fieldsOf(root).length === 0) addProblem(l, '', 'no check defined')
     const toModel = order.filter((id) => items[id].source === 'model').length
     if (toModel > LIMITS.maxQuestions) addProblem(l, '', `${toModel} questions for the model: at most ${LIMITS.maxQuestions} per request`)
   }
-  return readerResult(l, o.fromProject ? { order, defs: items, file, fromProject: true } : { order, defs: items, file })
+  const r = readerResult<Checks>(l, o.fromProject ? { order, defs: items, file, fromProject: true } : { order, defs: items, file })
+  return r.ok && l.notes?.length ? { ok: true, value: { ...r.value, notes: l.notes } } : r
 }
 
 // ═══ policy.json ═══
@@ -1619,6 +1645,10 @@ function replaceNames(c: Checks, vocab: Vocabulary): { checks: Checks; names: Ma
       if (keys.length > 0) trustedOptions[name] = keys
     }
   })
+  for (const name of order) {
+    const m = items[name].chunks_matching
+    if (m !== undefined && names.has(m)) items[name] = { ...items[name], chunks_matching: names.get(m) }
+  }
   const checks: Checks = { order, defs: items, file: c.file, fromProject: true }
   if (added.length > 0) checks.added = added
   if (Object.keys(trustedOptions).length > 0) checks.trustedOptions = trustedOptions
@@ -2078,7 +2108,10 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
   const trustedChecks: Candidate<Checks>[] = []
   if (layers.user.checks) {
     const r = readChecks(layers.user.checks)
-    if (r.ok) trustedChecks.push({ value: r.value, path: layers.user.checks.path, fromUser: true })
+    if (r.ok) {
+      trustedChecks.push({ value: r.value, path: layers.user.checks.path, fromUser: true })
+      for (const n of r.value.notes ?? []) warn(n)
+    }
     else warn(`${r.error.message}: using the plugin's checks`, r.error.problems)
   }
   trustedChecks.push({ value: pc.value, path: layers.plugin.checks.path, fromUser: false })

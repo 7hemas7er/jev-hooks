@@ -111,6 +111,22 @@ alone, with 4 false alarms in 44 instead of 10. It costs one more question per c
 A `checks.json` of yours that predates `weakens_expected` keeps working: that
 condition is dropped with a note, and the rule fires as it did before.
 
+**Why `weakens_tests` looks only at chunks with tests.** A chunk question's value is its
+highest p across the chunks, and a chunk state lists only that chunk's files. In live use
+the rule escalated on 29 of 220 diffs split into several chunks and on 1 of 67
+single-chunk diffs: a chunk of application code alone scored up to 0.3 on the second
+reading, enough to pass its 0.10, while every bench diff fit in one chunk, so the bench
+never showed it. Both readings now count only the chunks that hold a test, CI or
+test-tool file, by the paths of `touches_tests` (`chunks_matching` in `checks.json`); a
+diff with such a file in no chunk, past the chunk limit or as the old name of a rename,
+counts every chunk as before. On 126 real multi-chunk commits that touch tests,
+labelled by two agents each with no weakening (252 of 252 labels agreeing), false
+escalations go from 28 to 17. On the dev and `live.jsonl` diffs split into chunks by an
+added file of application code (19 positives, 126 negatives) they go from 63 to 4, with
+every positive kept; single-chunk diffs do not change. Rewording the second reading
+instead did not help: two variants that left the changed-expected-value case to the
+other chunks gave 29 and 34 false escalations on the same commits.
+
 **Why the model never blocks on its own (policy v2).** With the first policy, where
 model rules could reach BLOCK, 10 of the holdout's 34 clean diffs were blocked. Eight
 questions with a few percent of false alarms each add up, and a hard stop on a wrong
@@ -157,6 +173,9 @@ you that the thresholds no longer apply to that question until you measure again
   fresh holdout written blind (`2026-09-29-holdout-weakens`): 15 of 16 positives, as
   before, and 4 false alarms in 44 instead of 10. The second wording is
   `weakens_expected` in `checks.json`, asked as an `unless` condition of the rule.
+  A fourth round (2026-10-07, `2026-10-07-weakens3-*` and `variants-weakens-3.json`)
+  measured diffs split into several chunks, which the bench had none of: the fix was not
+  a wording but which chunks count (above).
 - **The effort router** on its dev and holdout sets (`2026-09-28-router-*`): the
   questions' accuracy and AUROC, the effort each configuration would pick, and a
   frontier between under-routed turns and effort saved. `config/router.json` sits one

@@ -152,6 +152,14 @@ export interface CheckDef {
   // it with that question's labels (bench/verify.ts, scripts/measure-questions.ts)
   // instead of asking for labels of its own. Not sent to the model.
   bench_labels?: string
+  // Only for a model probability with scope "chunk": the id of a computed check of the
+  // same file with any_file_matches. The maximum across chunks then counts only the
+  // chunks holding a file that check matches, because the question can only be true
+  // there (a weakened test needs a test file): a chunk of application code alone
+  // added noise to the maximum and nothing else. With no such chunk, with the
+  // project's path regexes not evaluated, or with a name that is not such a check,
+  // every chunk counts, as without the field.
+  chunks_matching?: string
 }
 
 // order = order of the keys in the file, which is also the printing order.
@@ -173,6 +181,7 @@ export interface Checks {
   fromProject?: boolean
   added?: string[]
   trustedOptions?: Record<string, string[]>
+  notes?: string[]                          // what the reader set aside (a chunks_matching that turns no filter on)
 }
 
 // action "escalation" (policy v2): besides taking the verdict to its lane, the rule

@@ -5,6 +5,18 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `weakens_tests` and its second reading count only the chunks that hold a test, CI or
+  test-tool file (the paths of `touches_tests`), through a new `chunks_matching` field
+  in `checks.json`. A chunk state lists only its own files, and in live use the rule
+  escalated on 29 of 220 diffs split into several chunks against 1 of 67 single-chunk
+  ones: chunks of application code alone lifted the maximum. On 126 real multi-chunk
+  commits with no weakening, false escalations drop from 28 to 17; on the bench diffs
+  split into chunks, from 63 to 4 of 126, with all 19 positives kept. The question texts,
+  their hashes and the single-chunk results do not change. When a matching file reached
+  no chunk, every chunk counts, as before.
+
 ## 0.19.0 — 2026-10-05
 
 No data-migration note on documentation: only `hardcoded_secret` still reads documentation alone.

@@ -403,12 +403,21 @@ export type SentNoul = ChunkValue & { option?: string }
 
 // The CheckValue of a model probability, a noul or a choice with a value. For
 // chunk questions the p of the diff is the maximum of the calibrated p over the chunks
-// (noisy-OR would inflate small p as the chunks grow), and perChunk keeps every chunk:
+// (noisy-OR would inflate small p as the chunks grow), and perChunk keeps every chunk counted:
 // band and disagreement are evaluated chunk by chunk. The maximum is taken on the sent
 // question, where "yes" is always the problem; for a question with invert the worst
 // chunk is therefore the one with the lowest reported value.
-export function aggregateNoul(answers: readonly SentNoul[], o: { invert: boolean; perChunk: boolean }): CheckValue | undefined {
-  const valid = answers.filter((r) => Number.isFinite(r.p) && Number.isFinite(r.raw))
+// counts (chunks_matching): only the chunks whose files it accepts make the value and
+// perChunk, so an excluded chunk reaches neither the rules nor the band nor a
+// detector's disagreement. If it accepts none, every chunk counts: the filter can only
+// drop chunks of a diff that has some other chunk where the question can be true.
+export function aggregateNoul(
+  answers: readonly SentNoul[], o: { invert: boolean; perChunk: boolean; counts?: (files: readonly string[]) => boolean },
+): CheckValue | undefined {
+  const finite = answers.filter((r) => Number.isFinite(r.p) && Number.isFinite(r.raw))
+  const counts = o.counts
+  const counted = counts ? finite.filter((r) => counts(r.files)) : finite
+  const valid = counted.length > 0 ? counted : finite
   if (valid.length === 0) return undefined
   let worst = valid[0]
   for (const r of valid) if (r.p > worst.p) worst = r

@@ -32,6 +32,9 @@ What each step is for:
   weakened tests, API breaks, data migrations, debug leftovers) see only the file list
   and the diff of their chunk, never the title or the description: a description is
   written by whoever made the change, and on a pull request from a fork it can be hostile.
+  A chunk question's value is its highest p across the chunks; the two readings of
+  weakened tests take it only over the chunks that hold a test, CI or test-tool file,
+  since a chunk of application code alone cannot weaken a test but did add noise.
   The five global questions see title, description and the full file list. Three more
   checks (`docs_only`, `touches_tests`, `merge_ready`) are computed by code, because a
   4B model applies rules poorly and a path regex does not.

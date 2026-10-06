@@ -325,7 +325,9 @@ A test (`tests/bench/measure.test.ts`) compares the measurement's states with th
 - **Several chunks.** For a diff split into chunks, the p of a `chunk` question is the
   maximum across chunks, as in the reviewer. The readout already brings every p to
   "yes = problem" polarity, so the maximum stays right for the `inverse` and `1-p(…)`
-  readouts too.
+  readouts too. The measurement takes it over every chunk, also for a question with
+  `chunks_matching`: it measures the question, and `raw.jsonl` keeps each chunk's p, so
+  the simulator applies the filter as the reviewer does.
 - **Order.** Requests go one at a time: rizzo serializes them anyway, and the measured
   latency stays that of a single request.
 - **Non-local backend.** Towards a non-local backend (TypeSafe) the states go through
@@ -419,7 +421,10 @@ node scripts/simulate-policy.ts bench/results/2026-09-26-holdout --json
 
 - **What it replays.** The `raw.jsonl` rows of the `attuale` variant (the questions of
   `checks.json`), first repeat. Every p is already in "yes = problem" polarity and
-  already the maximum across chunks.
+  already the maximum across chunks. With each chunk's p recorded and the same plan,
+  the chunks are replayed one by one, so a check with `chunks_matching` counts only
+  its chunks; without them the simulation takes the maximum over every chunk and can
+  only show that check firing more often than the reviewer would.
 - **With which code.** The reviewer's: the `calibration.json` profile chosen from the
   backend identity written in `report.md` (model, fingerprint,
   `probability_status`), and the core's `aggregateNoul`, `decide` and `escalation`,
