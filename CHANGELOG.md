@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.20.0 — 2026-10-07
+
+The weakened-tests rule no longer reads chunks of application code alone.
+
 ### Changed
 
 - `weakens_tests` and its second reading count only the chunks that hold a test, CI or
