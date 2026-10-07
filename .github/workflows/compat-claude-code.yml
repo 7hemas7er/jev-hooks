@@ -4,8 +4,10 @@
 # plugin was last verified on and the latest one, validates the plugin and the
 # marketplace, runs tests-cc/ in Claude Code's own test kit, and type-checks
 # hooks/register.ts against the declarations that release writes with /plugin-types
-# (never committed: AGENTS.md, rule 6). None of it needs credentials: /plugin-types is
-# a local command and runs headless without a model. A failure opens an issue, once.
+# (never committed: AGENTS.md, rule 6). The job has no credentials: /plugin-types is a
+# local command, but a newer release may still refuse it headless without a login, and
+# then the type-check is skipped with a warning instead of failing the run. Any other
+# failure opens an issue, once.
 name: compat-claude-code
 on:
   schedule:
@@ -39,9 +41,21 @@ jobs:
       - run: node scripts/test-cc.ts
       # /plugin-types exists only while function hooks are enabled
       - name: Write the plugin API's declarations into .claude/types
+        id: types
         env: { CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: "1" }
-        run: claude -p "/plugin-types .claude/types"
-      - run: npx --yes -p typescript@7.0.2 tsc -p tsconfig.json
+        run: |
+          log="$RUNNER_TEMP/plugin-types.log"
+          if claude -p "/plugin-types .claude/types" > "$log" 2>&1; then
+            echo "written=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "Not logged in" "$log"; then
+            cat "$log"
+            echo "::warning title=plugin-types::Claude Code ${{ steps.version.outputs.installed }} asks for a login before /plugin-types; hooks/register.ts was not type-checked against it"
+          else
+            cat "$log"
+            exit 1
+          fi
+      - if: steps.types.outputs.written == 'true'
+        run: npx --yes -p typescript@7.0.2 tsc -p tsconfig.json
   report:
     needs: compat
     if: failure()

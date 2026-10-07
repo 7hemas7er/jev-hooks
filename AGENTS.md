@@ -50,11 +50,13 @@ They apply to every TypeScript file, and the tests enforce them.
    types that `hooks/register.ts` imports come from `/plugin-types`, written into
    `.claude/types/` (ignored by git): the declaration is large and trips the reviewer's
    own detectors, so it is never committed. `/plugin-types` appears only while
-   function hooks are enabled, and runs headless without a model or credentials:
+   function hooks are enabled, and runs headless without a model:
    `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "/plugin-types .claude/types"`.
-   The push CI type-checks only the core, with `tsconfig.core.json`; the weekly
-   compat job generates the declarations and checks `tsconfig.json`, `hooks/register.ts`
-   included.
+   Up to 2.1.284 it needs no credentials either; later releases answer "Not logged
+   in" without a login. The push CI type-checks only the core, with
+   `tsconfig.core.json`; the weekly compat job generates the declarations and checks
+   `tsconfig.json`, `hooks/register.ts` included, and skips that check with a warning
+   when the release asks for a login.
 
 `hooks/register.ts` also obeys Claude Code's plugin scanner, which
 `claude plugin validate .claude-plugin/plugin.json` applies: `$` is never passed to an
