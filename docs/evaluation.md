@@ -139,6 +139,19 @@ positive that marks a test as an expected failure scores 0.179, so the rule keep
 12 positives instead of 12, with 1 false alarm in 109 instead of 4. At 0.50 a second
 positive, loosened assertions at 0.420, would go too.
 
+**Why `hardcoded_secret` has no second reading.** It shows the same pattern as
+`weakens_tests` did: in live use 52 of its 54 escalations came from diffs split into
+several chunks, and none of 93 single-chunk diffs reached its 0.15. About one chunk in
+thirty of real code, configuration or notes scores 0.15 with no credential in it (23 of
+675 chunks of 126 real commits), and those chunks hold any kind of file, so no path
+separates them from a real secret, which can sit in any file. A higher threshold would
+cost the holdout's positives at 0.199 and 0.245. Two second readings that ask for the
+credential's value written out on an added line (`bench/variants-secret-1.json`)
+removed all 17 false escalations on those commits but kept only 8 of the holdout's 10
+caught positives at best, missing a GitHub token in a CI workflow and a webhook
+secret, and missed the one real positive. A missed secret has to be revoked; a false
+escalation costs one look by Claude. The question stays as it is.
+
 **Why the model never blocks on its own (policy v2).** With the first policy, where
 model rules could reach BLOCK, 10 of the holdout's 34 clean diffs were blocked. Eight
 questions with a few percent of false alarms each add up, and a hard stop on a wrong

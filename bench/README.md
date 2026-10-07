@@ -436,6 +436,18 @@ Every row of the sets above fits in one chunk, while the live false alarms of
 sets. `docs/evaluation.md` gives the numbers; `chunks_matching` in `config/checks.json`
 is what came of it.
 
+The same day `hardcoded_secret` was measured the same way (`variants-secret-1.json`,
+two second readings that ask for the credential's value written out on an added line).
+The rows of `dev.jsonl` and `holdout.jsonl` with a `hardcoded_secret` label (239, 20
+positives) followed by the same diff of `src/action/main.ts` did not serve: that file
+handles tokens and keys, and one of its chunks scores about 0.16 on every row, so it
+is not a neutral padding for this question. The 126 real commits did: the 20 that scored
+0.15 or more were labelled by two agents (19 of 20 agreeing, a third on the remaining
+one): one positive, a literal client secret as the fallback of an environment read in a
+test script, and 19 negatives. `results/2026-10-07-secret1-dev` and `-holdout` are the
+variants on the single-chunk sets. Result: negative, nothing changed in the
+configuration; `docs/evaluation.md` gives the numbers.
+
 ## `live-reviews.jsonl`: commits the live reviewer saw, labelled for every question
 
 44 commits of this repo that the installed reviewer reviewed between 2026-09-27 and
