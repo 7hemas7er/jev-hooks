@@ -465,6 +465,10 @@ test('measurement: one request per state, readouts, metrics and report', async (
       g.find((x) => x.id === id && x.variant === variant && x.question === question) as RawRow
     near(line('pos1', 'kind').p, 0.3, '1 − p(none)')
     near(line('pos1', 'kind').raw, 0.7)
+    assert.equal(line('pos1', 'kind').choice, 'none', 'the option the model picked')
+    assert.equal(line('pos2', 'kind').choice, 'aws')
+    assert.equal(line('pos1', 'direct').choice, undefined, 'a noul has no option')
+    assert.equal(line('pos1', 'kind').choices, undefined, 'one chunk: no list')
     near(line('neg2', 'direct_inversa').p, 0.1, '1 − P(yes)')
     assert.equal(line('pos1', 'direct').label, true)
     assert.equal(line('neg1', 'direct').label, false)
@@ -555,6 +559,29 @@ test('measurement: the states are those review() sends, even with several chunks
   } finally {
     await fake.close()
     await reviewed.close()
+  }
+})
+
+test('measurement: with several chunks, raw.jsonl keeps the option of each chunk', async () => {
+  const long = Array.from({ length: 400 }, (_, i) => `value_${i} = compute(${i}, "${'x'.repeat(20)}")`)
+  const diff = newFile('src/auth/session.py', ['def log_in(user):', '    return user.ok']) + newFile('src/long.py', long)
+  const n = statesOf({ id: 'x', diff, title: 'feat: sessions', description: null, labels: {} }, pluginConfig()).chunks.length
+  assert.ok(n > 1, 'the diff must be split into several chunks')
+  const { fake, options } = await prepare({
+    dataset: [{ id: 'large', title: 'feat: sessions', labels: {}, diff }],
+    variants: { hardcoded_secret: { variants: { kind: { readout: '1-p(none)', question: CHOICE } } } },
+    scenario: { defaults: { choice: 'none' }, rules: [{ if_state_contains: 'log_in', answers: { hardcoded_secret__kind: selection(0.4, 0.5) } }] },
+  })
+  try {
+    const e = await measure(options)
+    assert.equal(e.exitCode, 0)
+    const [g] = raw(e.raw)
+    near(g.p, 0.6, 'the maximum across chunks')
+    assert.equal(g.choice, 'aws', 'the option of the chunk that gave p')
+    assert.equal(g.chunks?.length, n)
+    assert.deepEqual(g.choices?.map((x, i) => [x, g.chunks?.[i] === g.p]).sort(), [['aws', true], ...Array.from({ length: n - 1 }, () => ['none', false])].sort())
+  } finally {
+    await fake.close()
   }
 })
 

@@ -656,6 +656,8 @@ export interface RawRow {
   label: boolean | null
   ms: number
   chunks?: number[]
+  choice?: string
+  choices?: string[]
   error?: string
 }
 
@@ -668,7 +670,7 @@ export interface MeasureResult {
   rows: RawRow[]
 }
 
-interface Collected { chunks: { p: number; raw: number }[]; expected: number; ms: number; error?: string }
+interface Collected { chunks: { p: number; raw: number; choice?: string }[]; expected: number; ms: number; error?: string }
 
 function readText(file: string): string {
   try {
@@ -786,7 +788,7 @@ export async function measure(o: MeasureOptions): Promise<MeasureResult> {
       }
       const x = readValue(v.readout, a)
       if (typeof x === 'string') coll.error ??= x
-      else coll.chunks.push(x)
+      else coll.chunks.push(a.type === 'choice' ? { ...x, choice: a.choice } : x)
     }
   }
 
@@ -837,7 +839,14 @@ export async function measure(o: MeasureOptions): Promise<MeasureResult> {
           const worst = coll.chunks.reduce((a, x) => (x.p > a.p ? x : a))
           rg.p = worst.p
           rg.raw = worst.raw
-          if (coll.chunks.length > 1) rg.chunks = coll.chunks.map((x) => x.p)
+          // the option the model picked says which reading of the question fired,
+          // which a p alone cannot tell
+          if (worst.choice !== undefined) rg.choice = worst.choice
+          if (coll.chunks.length > 1) {
+            rg.chunks = coll.chunks.map((x) => x.p)
+            const choices = coll.chunks.flatMap((x) => (x.choice === undefined ? [] : [x.choice]))
+            if (choices.length === coll.chunks.length) rg.choices = choices
+          }
         } else {
           rg.error = coll.error
             ?? (coll.expected === 0 ? 'no chunk to send: all files ignored' : interrupted !== undefined ? 'measurement interrupted' : 'missing answers')

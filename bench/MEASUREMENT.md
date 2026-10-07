@@ -351,6 +351,10 @@ One line per diff, variant and repeat:
 - `ms` is the time of the requests that held the variant. Variants sent together
   share the same time.
 - `chunks` appears only with several chunks: the p of each one.
+- `choice` appears only for a `choice` question: the option the model picked, in the
+  chunk that gave `p`. With several chunks, `choices` holds each chunk's option, in
+  the order of `chunks`. They tell which reading of a question fired, for example
+  `ci_tests_off` or `test_removed` on a false alarm of `weakens_tests`.
 - If the variant got no answer, `p` is `null` and `error` says why: failed request,
   discarded answer or interrupted measurement.
 
