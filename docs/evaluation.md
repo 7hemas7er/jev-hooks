@@ -85,7 +85,7 @@ are in `bench/results/`.
 | hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.15 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.91 (10/11) · 0.009 (1/110) |
 | injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate, unless docs only | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
 | touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate, unless docs only | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
-| weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.10 | 1.00 (9/9) · 0.028 (3/109) | 1.00 (12/12) · 0.037 (4/109) |
+| weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.30 | 1.00 (9/9) · 0.018 (2/109) | 0.92 (11/12) · 0.009 (1/109) |
 | breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90 unless docs only, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.048 (5/105) |
 | data_migration | choice, 1 − P(none) | 1.000 | 0.992 | ≥ 0.76, note | 1.00 (7/7) · 0 (0/111) | 1.00 (10/10) · 0.027 (3/111) |
 | debug_leftovers | noul | 0.994 | 0.966 | ≥ 0.40 unless docs only, note | 0.88 (7/8) · 0.027 (3/110) | 0.91 (10/11) · 0.036 (4/110) |
@@ -115,8 +115,8 @@ condition is dropped with a note, and the rule fires as it did before.
 highest p across the chunks, and a chunk state lists only that chunk's files. In live use
 the rule escalated on 29 of 220 diffs split into several chunks and on 1 of 67
 single-chunk diffs: a chunk of application code alone scored up to 0.3 on the second
-reading, enough to pass its 0.10, while every bench diff fit in one chunk, so the bench
-never showed it. Both readings now count only the chunks that hold a test, CI or
+reading, enough to pass its threshold of then, 0.10, while every bench diff fit in one
+chunk, so the bench never showed it. Both readings now count only the chunks that hold a test, CI or
 test-tool file, by the paths of `touches_tests` (`chunks_matching` in `checks.json`); a
 diff with such a file in no chunk, past the chunk limit or as the old name of a rename,
 counts every chunk as before. On 126 real multi-chunk commits that touch tests,
@@ -126,6 +126,18 @@ added file of application code (19 positives, 126 negatives) they go from 63 to 
 every positive kept; single-chunk diffs do not change. Rewording the second reading
 instead did not help: two variants that left the changed-expected-value case to the
 other chunks gave 29 and 34 false escalations on the same commits.
+
+**Why the second reading's threshold is 0.30.** With the option each chunk picks
+recorded, 12 of the 14 real false escalations left had the second reading pick "none",
+at 0.12 to 0.30 on `1 − p(none)`, enough to pass the old 0.10. At 0.30 false
+escalations go from 16 to 4 of 126 on the real commits, from 4 to 1 on the split bench
+diffs, from 3 to 2 of 109 on dev and from 3 to 0 of 17 on `live.jsonl`, with every
+positive of those sets kept; the blind holdout stays at 15 of 16 positives and 4 false
+alarms in 44. The cost is on the old holdout, where the second reading was measured
+under the `weakens_tests` name (`bench/results/2026-09-28-holdout-i_expected`): a
+positive that marks a test as an expected failure scores 0.179, so the rule keeps 11 of
+12 positives instead of 12, with 1 false alarm in 109 instead of 4. At 0.50 a second
+positive, loosened assertions at 0.420, would go too.
 
 **Why the model never blocks on its own (policy v2).** With the first policy, where
 model rules could reach BLOCK, 10 of the holdout's 34 clean diffs were blocked. Eight
@@ -303,9 +315,9 @@ to 0.15 removed the escalations between 0.107 and 0.14, with
 the bench's positives unchanged. That move looked at both bench sets, so the holdout no
 longer measures that threshold blind. Going higher would cost the holdout's positives at
 0.199 and 0.245. The `weakens_tests` escalations are an expected value changed together
-with the code that computes it (second reading at 0.15, just above its 0.10, which stays
-because one of the holdout's positives has it at 0.179), a CI workflow that runs the
-tests on more branches, and an assertion replaced together with the script it checks
+with the code that computes it (second reading at 0.15, just above its 0.10 of then,
+which stayed because one of the holdout's positives has it at 0.179; it is 0.30 since
+2026-10-07), a CI workflow that runs the tests on more branches, and an assertion replaced together with the script it checks
 (second reading 0.26). A fourth, three components deleted with no test in the diff
 (0.55, second reading 0.57), is why the rule now needs a test, CI or test-tool file in
 the diff (`touches_tests`): every weakening the definitions list needs one, the bench

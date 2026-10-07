@@ -5,6 +5,17 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- The second reading of `weakens_tests` (`weakens_expected`) must now reach 0.30
+  instead of 0.10 for the rule to escalate. In 12 of the 14 false escalations left on
+  126 real multi-chunk commits it picked "no weakening" and scored 0.12 to 0.30. False
+  escalations on those commits drop from 16 to 4; on the bench every positive is kept
+  except one of the old holdout's 12, a test marked as an expected failure whose second
+  reading scores 0.179.
+- `scripts/measure-questions.ts` records in `raw.jsonl` the option a choice question
+  picked (`choice`) and, with several chunks, each chunk's (`choices`).
+
 ## 0.20.0 — 2026-10-07
 
 The weakened-tests rule no longer reads chunks of application code alone.
