@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.21.0 — 2026-10-07
+
+Fewer weakened-tests escalations on commits that only change tests alongside code.
+
 ### Changed
 
 - The second reading of `weakens_tests` (`weakens_expected`) must now reach 0.30
