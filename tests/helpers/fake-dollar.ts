@@ -63,6 +63,14 @@ export interface StepResult {
 }
 
 export interface PromptInput { text: string; origin?: { kind: string }; turnId?: string; wait?: boolean }
+
+// agent.spawn: what the test sets of the engine's input (the rest has defaults), and
+// what beneath answers: the started subagent, or a refusal.
+export interface SpawnInput {
+  prompt?: string; description?: string; subagentType?: string; model?: string; parentModel?: string; fork?: boolean
+  isTeammate?: true; workflow?: { runId: string; agentIndex: number }; background?: boolean
+}
+export type SpawnResult = { model: string; agentId?: string; deny?: undefined } | { deny: string; model?: undefined; agentId?: undefined }
 export type PromptResult = { text: string; drop?: undefined } | { drop: string; text?: undefined }
 
 export interface SubmitOptions {
@@ -121,6 +129,7 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   const logs: { text: string; to: Sink }[] = []
   const status: (string | undefined)[] = []
   const beneath: StepSeen[] = []
+  const spawned: Record<string, unknown>[] = []
   const entered: string[] = []
   const timers: Timer[] = []
   const queue: Queued[] = []
@@ -260,7 +269,7 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   }
 
   return {
-    hooks, env, files, unreadable, denied, broken, calls, envReads, fetches, logs, status, beneath, entered, timers, registered,
+    hooks, env, files, unreadable, denied, broken, calls, envReads, fetches, logs, status, beneath, entered, timers, registered, spawned,
     get now(): number { return w.clock },
     setRepo(root: string | null): void { w.repoRoot = root },
     setCwd(cwd: string): void { w.cwd = cwd },
@@ -326,6 +335,23 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
       const next = Object.assign(async () => ({ result: { stdout: '', stderr: '', interrupted: false } }), { signal: signalOf() })
       const hook = hooks['tool.call']
       return hook ? hook(dollar('tool.call'), e, next) : next()
+    },
+
+    // agent.spawn: beneath records the input it was asked to start and answers with the
+    // model it resolved (the input's, else the parent's) and the agentId, or refuses.
+    async spawn(e: SpawnInput, o: { agentId?: string; deny?: string; signal?: AbortSignal } = {}): Promise<SpawnResult> {
+      const input = Object.freeze({
+        tool_use_id: 'toolu_test', prompt: 'Read README.md.', description: 'test', subagentType: 'general-purpose',
+        provider: { plugin: 'engine', tier: 'core' }, parentModel: DEFAULT_MODEL, fork: false, background: false, ...e,
+      })
+      const signal = signalOf(o.signal)
+      const next = Object.assign(async (x: typeof input & { model?: string }): Promise<SpawnResult> => {
+        spawned.push({ ...x })
+        if (o.deny !== undefined) return { deny: o.deny }
+        return { model: x.model ?? x.parentModel, agentId: o.agentId ?? 'agent-test' }
+      }, { signal })
+      const hook = hooks['agent.spawn']
+      return (hook ? hook(dollar('agent.spawn', signal), input, next) : next(input)) as Promise<SpawnResult>
     },
 
     // turn.step, drained as the engine drains it; beneath records the request it was

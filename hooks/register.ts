@@ -2,6 +2,12 @@
 // /v1/systemone backend what kind of request a prompt is and lowers that turn's effort
 // when the answer allows it. Off unless the effort_router option is true.
 //
+// The same module holds the subagent router (agent_router option, Claude Code 2.1.294):
+// agent.spawn asks the backend what kind of task a subagent was given and moves the
+// ones config/agents.json routes to a cheaper model, an Agent tool spawn in its input,
+// a workflow agent (whose spawn cannot be rewritten) at each of its steps in turn.step.
+// Its decisions are in src/core/agents.ts.
+//
 // What it decides lives in src/core/router.ts; this file only carries data between
 // `$` and those pure functions. The plugin scanner (`claude plugin validate`) refuses a
 // module that passes `$` to an imported function (it follows `$` only into a function
@@ -49,7 +55,8 @@ import {
   modelAllowed, parseClassification, prepareRequest, routerBackend, routerLogLine, statusLine, userConfigDir,
 } from '../src/core/router.ts'
 import type { Classification, GuardState, GuardStep, RouterContext, SessionEffort } from '../src/core/router.ts'
-import type { Effort, RouterConfig } from '../src/core/types.ts'
+import type { AgentSpawn, AgentsConfig, Effort, Result, RouterBackend, RouterConfig } from '../src/core/types.ts'
+import { AGENTS_FILES, agentLine, agentRequest, agentsStatus, chooseModel, effectiveAgentsConfig, spawnSkip } from '../src/core/agents.ts'
 import { dataFolderOf, joinStatus, lastReview, manifestVersion, mayCommit, newerVersions, statusText, versionFolder } from '../src/core/status-line.ts'
 import type { LastReview } from '../src/core/status-line.ts'
 
@@ -99,12 +106,15 @@ type LineIo = {
   ui: { status(text: string | undefined): void }
 }
 type Line = { running: string; session: string; log: string | null; newer: string | null; last: LastReview | null }
-type StatusUi = { line: Line | null; router: string | undefined }
+// router: the effort router's part during a routed turn; agents: the subagent router's
+// count for the session
+type StatusUi = { line: Line | null; router: string | undefined; agents: string | undefined }
 
-// The text for $.ui.status, with the router's part (undefined clears it) after the line.
+// The text for $.ui.status, with the router's part (undefined clears it) after the line,
+// and the subagent router's count last.
 function shown(ui: StatusUi, router: string | undefined): string | undefined {
   ui.router = router
-  return joinStatus(ui.line ? statusText(ui.line) : undefined, router)
+  return joinStatus(joinStatus(ui.line ? statusText(ui.line) : undefined, router), ui.agents)
 }
 
 // JEV_HOOKS_DISABLE=1 turns off the whole plugin, the line too: read at every update,
@@ -185,16 +195,130 @@ async function lineAfterCommit($: LineIo, ui: StatusUi): Promise<void> {
   }
 }
 
+// ─── The routers' files and backend ───────────────────────────────────────────
+//
+// What both routers read before asking the backend: their configuration files, the
+// backend and its key, guardrail's mask map. Each takes `$` at the top level of this
+// file, where the scanner follows it.
+type FilesIo = {
+  env: { get(name: string): Promise<string | undefined> }
+  fs: { read(path: string): Promise<string>; exists(path: string): Promise<boolean> }
+  session: { repo(): Promise<{ root: string } | null>; cwd(): Promise<string> }
+}
+// the checkout's top level found from a session directory (null: none found). Only a
+// walk that ran to its end is kept: one a refused call cut short is tried again.
+type Walk = { last: { cwd: string; top: string | null } | null }
+type RouterFiles = {
+  home: string | undefined; dir: string | null
+  user: string | null; userUnreadable: boolean; userCalibration: string | null; userCalibrationUnreadable: boolean
+  projects: ProjectFile[]
+}
+
+// A configuration file read as the mask map is: only a missing file (RE_NO_FILE) is
+// none. One that is there but cannot be read (EACCES, ELOOP, EISDIR, the size cap,
+// another hook's refusal) is unreadable: a router file may hold the switch that keeps
+// the router off, so the router stays off.
+function readClassified($: FilesIo, path: string): Promise<ConfigFile> {
+  return $.fs.read(path).then((text) => ({ text }), (err: unknown) =>
+    (RE_NO_FILE.test(String(err)) ? { text: null } : { text: null, error: 'unreadable' }))
+}
+
+// The user's <name> and calibration.json, and the project's <name>. The reviewer reads
+// .jev-hooks/ at `git rev-parse --show-toplevel`, the checkout's own top level, a
+// linked worktree's included; $.session.repo() answers the main working tree's root
+// even in a worktree. So the top level is looked for as git does, the first directory
+// up from the session's that holds .git (a file in a linked worktree), and when it is
+// not the main working tree's root both files are read: each can only restrict.
+// Outside a repository, the session's directory. When another hook refuses
+// $.session.repo the walk still finds the top level (the session's directory if it
+// finds none); in a linked worktree only the checkout's own file is read then, since
+// the main working tree's root is unknown.
+async function routerFiles($: FilesIo, name: string, labels: { project: string; projectMainTree: string }, walk: Walk): Promise<RouterFiles> {
+  const home = await $.env.get('HOME')
+  const dir = userConfigDir(await $.env.get('XDG_CONFIG_HOME'), home)
+  const userFile: ConfigFile = dir === null ? { text: null } : await readClassified($, `${dir}/jev-hooks/${name}`)
+  const calibrationFile: ConfigFile = dir === null ? { text: null } : await readClassified($, `${dir}/jev-hooks/calibration.json`)
+
+  // undefined: the call was refused, which says nothing of where the session is
+  const repo = await $.session.repo().catch(() => undefined)
+  const files: { label: string; path: string }[] = []
+  if (repo === null) files.push({ label: labels.project, path: `./.jev-hooks/${name}` })
+  else {
+    const root = repo ? trimSlashes(repo.root) : null
+    const cwd = await $.session.cwd().catch(() => null)
+    let top: string | null = null
+    if (typeof cwd === 'string') {
+      if (walk.last && walk.last.cwd === cwd) top = walk.last.top
+      else {
+        let done = true
+        if (cwd.startsWith('/')) {
+          try {
+            // d without its trailing slash: '' is the file system's root
+            let d = trimSlashes(cwd)
+            for (let i = 0; i < MAX_WALK; i++) {
+              if (await $.fs.exists(`${d}/.git`)) {
+                top = d
+                break
+              }
+              if (d === '') break
+              d = d.slice(0, d.lastIndexOf('/'))
+            }
+          } catch {
+            // a refused call: for this prompt, as without the walk, the repository's
+            // root, or the session's directory when that is unknown too; the next
+            // prompt walks again
+            done = false
+          }
+        }
+        if (done) walk.last = { cwd, top }
+      }
+    }
+    const checkout = top ?? root
+    files.push({ label: labels.project, path: checkout === null ? `./.jev-hooks/${name}` : `${checkout}/.jev-hooks/${name}` })
+    if (root !== null && checkout !== root) files.push({ label: labels.projectMainTree, path: `${root}/.jev-hooks/${name}` })
+  }
+  const projects: ProjectFile[] = []
+  for (const f of files) {
+    const r = await readClassified($, f.path)
+    projects.push(r.error === undefined ? { label: f.label, text: r.text } : { label: f.label, text: null, unreadable: true })
+  }
+  return {
+    home, dir, user: userFile.text, userUnreadable: userFile.error !== undefined, userCalibration: calibrationFile.text,
+    userCalibrationUnreadable: calibrationFile.error !== undefined, projects,
+  }
+}
+
+// The backend both routers ask, and its key: the options' router_url (or review_url),
+// otherwise the environment's URL, never its key (routerBackend).
+async function backendFor($: FilesIo, options: Readonly<Record<string, unknown>>, dir: string | null): Promise<Result<RouterBackend>> {
+  const keyFile = dir === null ? null : await $.fs.read(`${dir}/jev-hooks/key`).catch(() => null)
+  return routerBackend(options, { routerUrl: await $.env.get('JEV_HOOKS_ROUTER_URL'), url: await $.env.get('JEV_HOOKS_URL'), keyFile })
+}
+
+// Guardrail's mask map, looked up as the reviewer does; only a backend that leaves the
+// machine needs it. Read without $.fs.exists, which answers false for any failed stat
+// (EACCES, ELOOP) and would pass an existing map for a missing one. A map that cannot
+// be read, or cannot be looked for (no HOME and no GUARDRAIL_MASK_MAP), stops the
+// request: textRequest says so.
+async function maskFileFor($: FilesIo, home: string | undefined, local: boolean): Promise<{ text: string | null; error?: string }> {
+  if (local) return { text: null }
+  const path = (await $.env.get('GUARDRAIL_MASK_MAP')) || (home ? `${home}/.config/guardrail/mask.tsv` : '')
+  if (path === '') return { text: null, error: 'no home' }
+  return $.fs.read(path).then((text) => ({ text }), (err: unknown) =>
+    (RE_NO_FILE.test(String(err)) ? { text: null } : { text: null, error: 'unreadable' }))
+}
+
 export const register: Register = (on, options) => {
   // The enable gates. Options are fixed for an activation (a change reloads the
-  // module): with both off nothing is registered, and with the router off no prompt pays
+  // module): with all three off nothing is registered, and with the router off no prompt pays
   // for a $ call (the status line only listens to session.start, turn.start and Bash
   // calls); effectiveRouterConfig checks the router's option a second time.
   const lineOn = options.status_line !== false
   const routerOn = options.effort_router === true
-  if (!lineOn && !routerOn) return
+  const agentsOn = options.agent_router === true
+  if (!lineOn && !routerOn && !agentsOn) return
 
-  const ui: StatusUi = { line: null, router: undefined }
+  const ui: StatusUi = { line: null, router: undefined, agents: undefined }
   if (lineOn) {
     on('session.start', async ($, e, next) => {
       const r = await next(e)
@@ -235,8 +359,184 @@ export const register: Register = (on, options) => {
     return r
   })
 
-  if (!routerOn) return
+  // Shared by both routers: where the checkout's top level was found, and the model each
+  // routed workflow agent runs on (agent.spawn writes it, turn.step reads it).
+  const walk: Walk = { last: null }
+  const routed = new Map<string, string>()
 
+  // The subagent router. Before a subagent starts, one question about its task prompt;
+  // an Agent tool spawn gets the chosen model in its input, a workflow agent (whose
+  // spawn cannot be rewritten) gets it at every one of its steps, from index 0: the
+  // spawn's answer carries the agentId before the first step is sent. Every problem
+  // leaves the subagent as its caller decided, and one transcript line says so.
+  if (agentsOn) {
+    let agentsMemo: {
+      user: string | null; userUnreadable: boolean; projects: ProjectFile[]
+      userCalibration: string | null; userCalibrationUnreadable: boolean; result: { cfg: AgentsConfig | null; notes: string[] }
+    } | null = null
+    let agentsNotes = ''
+    let agentsProblem = ''
+    let agentsInFlight = 0
+    // spawns the router looked at (not skipped) and how many moved, per model
+    let seen = 0
+    const moved: Record<string, number> = {}
+    // a workflow of hundreds of agents keeps only the newest
+    const KEPT_AGENTS = 512
+    const remember = (agentId: string, model: string): void => {
+      routed.delete(agentId)
+      routed.set(agentId, model)
+      if (routed.size > KEPT_AGENTS) {
+        const oldest = routed.keys().next()
+        if (!oldest.done) routed.delete(oldest.value)
+      }
+    }
+    const agentsSink = (line: string): 'transcript' | 'debug' => {
+      if (line === agentsProblem) return 'debug'
+      agentsProblem = line
+      return 'transcript'
+    }
+
+    on('agent.spawn', async ($, e, next) => {
+      let arg = e
+      // the model a workflow agent's steps get, once its agentId is known
+      let later: string | undefined
+      let counted = false
+      const s: AgentSpawn = {
+        subagentType: e.subagentType, parentModel: e.parentModel, fork: e.fork === true,
+        ...(typeof e.model === 'string' ? { model: e.model } : {}),
+        ...(e.isTeammate === true ? { isTeammate: true } : {}),
+        ...(e.workflow !== undefined ? { workflow: true } : {}),
+      }
+      let key = ''
+      // Every return leaves the spawn as it is: the single next(arg) is below.
+      const decide = async (): Promise<void> => {
+        if ((await $.env.get('JEV_HOOKS_AGENTS')) === '0' || (await $.env.get('JEV_HOOKS_DISABLE')) === '1') return
+        const f = await routerFiles($, 'agents.json', AGENTS_FILES, walk)
+        if (!agentsMemo || agentsMemo.user !== f.user || agentsMemo.userUnreadable !== f.userUnreadable
+          || agentsMemo.userCalibration !== f.userCalibration || agentsMemo.userCalibrationUnreadable !== f.userCalibrationUnreadable
+          || !sameFiles(agentsMemo.projects, f.projects)) {
+          const read = {
+            user: f.user, userUnreadable: f.userUnreadable, projects: f.projects, userCalibration: f.userCalibration,
+            userCalibrationUnreadable: f.userCalibrationUnreadable,
+          }
+          agentsMemo = { ...read, result: effectiveAgentsConfig(read, options) }
+        }
+        const notes = agentsMemo.result.notes.join('\n')
+        if (notes !== agentsNotes) {
+          for (const n of agentsMemo.result.notes) $.ui.log(`[jev-hooks] agents: ${n}`)
+          agentsNotes = notes
+        }
+        const c = agentsMemo.result.cfg
+        if (!c || !c.enabled) return
+        const skip = spawnSkip(s, c)
+        if (skip !== null) {
+          $.ui.log(`[jev-hooks] agents: left as is (${skip})`, { to: 'debug' })
+          return
+        }
+        seen++
+        counted = true
+        if (agentsInFlight >= c.max_in_flight) {
+          $.ui.log('[jev-hooks] agents: backend busy, left as is', { to: 'debug' })
+          return
+        }
+        // The slot is taken here, before the awaits below, or a burst of spawns would all
+        // pass the check; it is given back when the request settles (a late one keeps it
+        // to its end, so a slow backend gets no more) or at once if none is made.
+        agentsInFlight++
+        let sent = false
+        const release = (): void => {
+          agentsInFlight--
+        }
+        try {
+          const b = await backendFor($, options, f.dir)
+          if (!b.ok) {
+            const line = sanitize(b.error.message, '', 300)
+            $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
+            return
+          }
+          key = b.value.key
+          const maskFile = await maskFileFor($, f.home, b.value.local)
+          const t0 = await $.clock.now()
+          const prep = agentRequest(c, e.prompt, b.value, maskFile, t0)
+          if ('skip' in prep) {
+            if (prep.problem) $.ui.log(`[jev-hooks] agents: ${prep.skip}`, { to: agentsSink(prep.skip) })
+            else $.ui.log(`[jev-hooks] agents: left as is (${prep.skip})`, { to: 'debug' })
+          } else {
+            // the race, as the effort router's: the answer, or null after timeout_ms
+            const timer: { h?: { cancel(): void } } = {}
+            const timeout = new Promise<null>((resolve) => {
+              timer.h = $.clock.after(c.timeout_ms, () => resolve(null))
+            })
+            const request = $.http.fetch(prep.url, prep.init).finally(release)
+            sent = true
+            let res: { status: number; text: string } | null
+            try {
+              res = await Promise.race([request, timeout])
+            } finally {
+              timer.h?.cancel()
+            }
+            const ms = (await $.clock.now()) - t0
+            if (res === null) {
+              const line = `no answer in ${formatNumber(c.timeout_ms, 0)} ms, subagent left as is`
+              $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
+            } else {
+              const parsed = parseClassification(c, b.value, res.status, res.text)
+              if (!parsed.ok) {
+                const line = sanitize(parsed.error.message, key, 300)
+                $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
+              } else {
+                agentsProblem = ''
+                const choice = chooseModel(parsed.value, s, c)
+                $.ui.log(agentLine(choice, s, ms), { to: 'debug' })
+                if (choice.model !== undefined) {
+                  if (s.workflow === true) later = choice.model
+                  else arg = { ...e, model: choice.model }
+                }
+              }
+            }
+          }
+        } finally {
+          if (!sent) release()
+        }
+      }
+      try {
+        await decide()
+      } catch (err) {
+        arg = e
+        later = undefined
+        // after an interrupt the engine rejects the spawn's calls: nothing to say then
+        if (!next.signal.aborted) {
+          try {
+            const line = `error, subagent left as is (${sanitize(String(err), key, 200)})`
+            $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
+          } catch {
+            // not even the line could be written: the spawn goes on all the same
+          }
+        }
+      }
+      // outside any try: a refusal beneath is the engine's to report
+      const r = await next(arg)
+      try {
+        if (r.deny === undefined) {
+          const to = later ?? (arg !== e ? arg.model : undefined)
+          if (later !== undefined && r.agentId !== undefined) remember(r.agentId, later)
+          if (to !== undefined && (later === undefined || r.agentId !== undefined)) moved[to] = (moved[to] ?? 0) + 1
+        }
+        if (counted && lineOn) {
+          ui.agents = agentsStatus(seen, moved)
+          $.ui.status(shown(ui, ui.router))
+        }
+      } catch {
+        // the count is the only thing lost
+      }
+      return r
+    })
+  }
+
+  if (!routerOn && !agentsOn) return
+
+  // The effort router's state. With the router off cfg stays null, and turn.step (which
+  // the subagent router needs too) leaves every effort alone.
   let cfg: RouterConfig | null = null
   // the files of the last prompt and what they gave: unchanged files are not validated
   // again. Whether a user file could be read is part of the key: one that goes from
@@ -245,9 +545,6 @@ export const register: Register = (on, options) => {
     user: string | null; userUnreadable: boolean; projects: ProjectFile[]
     userCalibration: string | null; userCalibrationUnreadable: boolean; result: Effective
   } | null = null
-  // the checkout's top level found from a session directory (null: none found). Only a
-  // walk that ran to its end is kept: one a refused call cut short is tried again.
-  let walked: { cwd: string; top: string | null } | null = null
   let lastNotes = ''
   // The prompts waiting for their turn, oldest first, one per text. A list, not a single
   // slot: a notification or a '/' command submitted while a queued prompt waits would
@@ -286,7 +583,7 @@ export const register: Register = (on, options) => {
     return 'transcript'
   }
 
-  on('prompt.submit', async ($, e, next) => {
+  if (routerOn) on('prompt.submit', async ($, e, next) => {
     let key = ''
     // A prompt typed or delivered during a turn (turnId set) leaves that turn's status
     // line alone: the turn still runs at the effort the line shows.
@@ -305,76 +602,8 @@ export const register: Register = (on, options) => {
         $.ui.status(shown(ui, undefined))
         return
       }
-      const home = await $.env.get('HOME')
-      const dir = userConfigDir(await $.env.get('XDG_CONFIG_HOME'), home)
-      // The configuration files, the user's and the project's, read as the mask map is:
-      // only a missing file (RE_NO_FILE) is none. One that is there but cannot be read
-      // (EACCES, ELOOP, EISDIR, the size cap, another hook's refusal) is unreadable: a
-      // router.json may hold the switch that keeps the router off, so
-      // effectiveRouterConfig keeps it off.
-      const readClassified = (path: string): Promise<ConfigFile> =>
-        $.fs.read(path).then((text) => ({ text }), (err: unknown) =>
-          (RE_NO_FILE.test(String(err)) ? { text: null } : { text: null, error: 'unreadable' }))
-      const userFile: ConfigFile = dir === null ? { text: null } : await readClassified(`${dir}/jev-hooks/router.json`)
-      const calibrationFile: ConfigFile = dir === null ? { text: null } : await readClassified(`${dir}/jev-hooks/calibration.json`)
-      const user = userFile.text
-      const userUnreadable = userFile.error !== undefined
-      const userCalibration = calibrationFile.text
-      const userCalibrationUnreadable = calibrationFile.error !== undefined
-
-      // The project files. The reviewer reads .jev-hooks/ at `git rev-parse
-      // --show-toplevel`, the checkout's own top level, a linked worktree's included;
-      // $.session.repo() answers the main working tree's root even in a worktree. So the
-      // top level is looked for as git does, the first directory up from the session's
-      // that holds .git (a file in a linked worktree), and when it is not the main
-      // working tree's root both files are read: each can only restrict. Outside a
-      // repository, the session's directory. When another hook refuses $.session.repo
-      // the walk still finds the top level (the session's directory if it finds none);
-      // in a linked worktree only the checkout's own file is read then, since the main
-      // working tree's root is unknown.
-      // undefined: the call was refused, which says nothing of where the session is
-      const repo = await $.session.repo().catch(() => undefined)
-      const files: { label: string; path: string }[] = []
-      if (repo === null) files.push({ label: ROUTER_FILES.project, path: './.jev-hooks/router.json' })
-      else {
-        const root = repo ? trimSlashes(repo.root) : null
-        const cwd = await $.session.cwd().catch(() => null)
-        let top: string | null = null
-        if (typeof cwd === 'string') {
-          if (walked && walked.cwd === cwd) top = walked.top
-          else {
-            let done = true
-            if (cwd.startsWith('/')) {
-              try {
-                // d without its trailing slash: '' is the file system's root
-                let d = trimSlashes(cwd)
-                for (let i = 0; i < MAX_WALK; i++) {
-                  if (await $.fs.exists(`${d}/.git`)) {
-                    top = d
-                    break
-                  }
-                  if (d === '') break
-                  d = d.slice(0, d.lastIndexOf('/'))
-                }
-              } catch {
-                // a refused call: for this prompt, as without the walk, the repository's
-                // root, or the session's directory when that is unknown too; the next
-                // prompt walks again
-                done = false
-              }
-            }
-            if (done) walked = { cwd, top }
-          }
-        }
-        const checkout = top ?? root
-        files.push({ label: ROUTER_FILES.project, path: checkout === null ? './.jev-hooks/router.json' : `${checkout}/.jev-hooks/router.json` })
-        if (root !== null && checkout !== root) files.push({ label: ROUTER_FILES.projectMainTree, path: `${root}/.jev-hooks/router.json` })
-      }
-      const projects: ProjectFile[] = []
-      for (const f of files) {
-        const r = await readClassified(f.path)
-        projects.push(r.error === undefined ? { label: f.label, text: r.text } : { label: f.label, text: null, unreadable: true })
-      }
+      const f = await routerFiles($, 'router.json', ROUTER_FILES, walk)
+      const { home, dir, user, userUnreadable, userCalibration, userCalibrationUnreadable, projects } = f
 
       if (!memo || memo.user !== user || memo.userUnreadable !== userUnreadable || memo.userCalibration !== userCalibration
         || memo.userCalibrationUnreadable !== userCalibrationUnreadable || !sameFiles(memo.projects, projects)) {
@@ -408,27 +637,14 @@ export const register: Register = (on, options) => {
         return
       }
 
-      const keyFile = dir === null ? null : await $.fs.read(`${dir}/jev-hooks/key`).catch(() => null)
-      const b = routerBackend(options, { routerUrl: await $.env.get('JEV_HOOKS_ROUTER_URL'), url: await $.env.get('JEV_HOOKS_URL'), keyFile })
+      const b = await backendFor($, options, dir)
       if (!b.ok) {
         problem(`[jev-hooks] router: ${sanitize(b.error.message, '', 300)}`)
         return
       }
       key = b.value.key
-      // Guardrail's mask map, looked up as the reviewer does; only a backend that
-      // leaves the machine needs it. Read without $.fs.exists, which answers false for
-      // any failed stat (EACCES, ELOOP) and would pass an existing map for a missing
-      // one. A map that cannot be read, or cannot be looked for (no HOME and no
-      // GUARDRAIL_MASK_MAP), stops the request: prepareRequest says so.
-      let maskFile: { text: string | null; error?: string } = { text: null }
-      if (!b.value.local) {
-        const path = (await $.env.get('GUARDRAIL_MASK_MAP')) || (home ? `${home}/.config/guardrail/mask.tsv` : '')
-        if (path === '') maskFile = { text: null, error: 'no home' }
-        else {
-          maskFile = await $.fs.read(path).then((text) => ({ text }), (err: unknown) =>
-            (RE_NO_FILE.test(String(err)) ? { text: null } : { text: null, error: 'unreadable' }))
-        }
-      }
+      // Guardrail's mask map, only for a backend that leaves the machine (maskFileFor).
+      const maskFile = await maskFileFor($, home, b.value.local)
       if (inFlight || t0 < busyUntil) {
         $.ui.log('[jev-hooks] router: backend still busy, turn left as is', { to: 'debug' })
         clearStatus()
@@ -509,6 +725,9 @@ export const register: Register = (on, options) => {
   on('turn.step', async function* ($, e, next) {
     let arg = e
     try {
+      // a workflow agent the subagent router moved: every step, from index 0
+      const to = e.agentId === undefined ? undefined : routed.get(e.agentId)
+      if (to !== undefined && to !== e.model) arg = { ...e, model: to }
       if (e.agentId === undefined) lastModel = e.model
       if (cfg && cfg.enabled && !guard.tripped && e.agentId === undefined) {
         if (e.index === 0) {
