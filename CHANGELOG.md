@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.22.0 — 2026-10-09
+
+A subagent router: subagents that check a claim or label against a definition run on
+Claude Haiku 5.5.
+
 ### Added
 
 - A subagent router, opt-in (`agent_router`, off by default; Claude Code 2.1.294 or
