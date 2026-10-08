@@ -1,5 +1,5 @@
-// src/core/defaults.ts is a generated copy of config/router.json and
-// config/calibration.json (the module loader does not import .json). The source of
+// src/core/defaults.ts is a generated copy of config/router.json, config/agents.json
+// and config/calibration.json (the module loader does not import .json). The source of
 // truth stays the JSON: this test fails if someone changes one without the other.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -7,8 +7,8 @@ import { readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_CALIBRATION, DEFAULT_ROUTER } from '../../src/core/defaults.ts'
-import { validateCalibration, validateRouter } from '../../src/core/config.ts'
+import { DEFAULT_AGENTS, DEFAULT_CALIBRATION, DEFAULT_ROUTER } from '../../src/core/defaults.ts'
+import { validateAgents, validateCalibration, validateRouter } from '../../src/core/config.ts'
 import { expectedDefaults, main, TARGET, USAGE } from '../../scripts/generate-defaults.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -17,6 +17,7 @@ const json = (rel: string): unknown => JSON.parse(readFileSync(join(root, rel), 
 test('the defaults match the JSON files in config/', () => {
   assert.deepEqual(DEFAULT_ROUTER, json('config/router.json'))
   assert.deepEqual(DEFAULT_CALIBRATION, json('config/calibration.json'))
+  assert.deepEqual(DEFAULT_AGENTS, json('config/agents.json'))
 })
 
 test('the generated file is identical to what the script would write', () => {
@@ -29,6 +30,8 @@ test('the defaults pass validation, as the router reads them', () => {
   if (!k.ok) return
   const r = validateRouter(DEFAULT_ROUTER, k.value, 'router.json (default)')
   assert.ok(r.ok, r.ok ? '' : r.error.message)
+  const a = validateAgents(DEFAULT_AGENTS, k.value, 'agents.json (default)')
+  assert.ok(a.ok, a.ok ? '' : a.error.message)
 })
 
 test('generate-defaults: --help prints the usage, an unknown argument is refused without writing', () => {

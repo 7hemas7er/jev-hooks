@@ -604,6 +604,39 @@ export interface RouterContext { model: string; effort?: SessionEffort; previous
 // effort only when it differs from the session's: absent means leave the turn alone.
 export interface EffortChoice { effort?: Effort; reason: string }
 
+// The subagent router's configuration (config/agents.json, validateAgents).
+export interface AgentsConfig {
+  enabled: boolean
+  timeout_ms: number
+  max_in_flight: number                 // classifications at once; a spawn beyond them is left as is
+  prompt_max_chars: number
+  prompt_head_chars: number
+  from_models: string[]                 // substrings of the parent's model id, as only_models
+  respect_explicit_model: boolean       // a spawn whose caller named a model is left as is
+  skip_types: string[]                  // subagent types never routed
+  workflow_agents: boolean              // also route the agents a workflow script starts (in turn.step)
+  min_top_probability: number
+  route: Record<string, string>         // option of the task question → model id; other options: untouched
+  questions: Record<string, WireQuestion>
+  taskQuestion: string                  // the one question, a choice (derived, not written in the JSON)
+  calibration: Calibration
+  file: string
+}
+
+// What agent.spawn hands the subagent router: the facts it decides on, never the
+// prompt's text (that goes to textRequest only).
+export interface AgentSpawn {
+  subagentType: string
+  model?: string                        // the caller's choice, if any
+  parentModel: string
+  fork: boolean
+  isTeammate?: boolean
+  workflow?: boolean
+}
+
+// model only when the subagent moves to another model: absent means leave it alone.
+export interface ModelChoice { model?: string; reason: string }
+
 // problem: a skip the user must hear about (the guardrail mask map), not one that is
 // part of the design (an origin, a prefix, an empty prompt).
 export type RouterRequest =

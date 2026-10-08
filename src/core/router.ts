@@ -74,6 +74,23 @@ function firstProblem(e: Failure): string {
   return e.problems && e.problems.length > 0 ? formatProblem(e.problems[0]) : e.message
 }
 
+// The calibration both routers read: the user's calibration.json when it is valid,
+// otherwise the plugin's; null (with a note) only if the plugin's is invalid.
+export function routerCalibration(f: { userCalibration: string | null; userCalibrationUnreadable?: boolean }, notes: string[]): Calibration | null {
+  const userCalibration = textOf(f, 'userCalibration')
+  const calibrationUnreadable = userCalibration === null && isObject(f) && f.userCalibrationUnreadable === true
+  if (userCalibration !== null) {
+    const parsed = parseJson(userCalibration, ROUTER_FILES.userCalibration)
+    const v = parsed.ok ? validateCalibration(parsed.value, ROUTER_FILES.userCalibration) : parsed
+    if (v.ok) return v.value
+    notes.push(`${ROUTER_FILES.userCalibration}: invalid, the plugin's calibration is used (${firstProblem(v.error)})`)
+  } else if (calibrationUnreadable) notes.push(`${ROUTER_FILES.userCalibration}: unreadable, the plugin's calibration is used`)
+  const d = validateCalibration(DEFAULT_CALIBRATION, ROUTER_FILES.pluginCalibration)
+  if (d.ok) return d.value
+  notes.push(`${ROUTER_FILES.pluginCalibration}: invalid (${firstProblem(d.error)})`)
+  return null
+}
+
 // The router's configuration: the user's router.json in full, or the plugin's; from
 // each project file only the restrictions (routerRestrictions); the calibration the
 // user's or the plugin's, baked into the config by validateRouter. Off unless the
@@ -104,25 +121,12 @@ export function effectiveRouterConfig(
   options: Readonly<Record<string, unknown>>,
 ): { cfg: RouterConfig | null; notes: string[] } {
   const notes: string[] = []
-  const userCalibration = textOf(f, 'userCalibration')
   const user = textOf(f, 'user')
   const projects = isObject(f) && Array.isArray(f.projects) ? f.projects : []
   // a text that came wins over the flag: only a file with no text can be unreadable
   const userUnreadable = user === null && isObject(f) && f.userUnreadable === true
-  const calibrationUnreadable = userCalibration === null && isObject(f) && f.userCalibrationUnreadable === true
-
-  let calibration: Calibration | undefined
-  if (userCalibration !== null) {
-    const parsed = parseJson(userCalibration, ROUTER_FILES.userCalibration)
-    const v = parsed.ok ? validateCalibration(parsed.value, ROUTER_FILES.userCalibration) : parsed
-    if (v.ok) calibration = v.value
-    else notes.push(`${ROUTER_FILES.userCalibration}: invalid, the plugin's calibration is used (${firstProblem(v.error)})`)
-  } else if (calibrationUnreadable) notes.push(`${ROUTER_FILES.userCalibration}: unreadable, the plugin's calibration is used`)
-  if (!calibration) {
-    const d = validateCalibration(DEFAULT_CALIBRATION, ROUTER_FILES.pluginCalibration)
-    if (!d.ok) return { cfg: null, notes: [...notes, `${ROUTER_FILES.pluginCalibration}: invalid (${firstProblem(d.error)})`] }
-    calibration = d.value
-  }
+  const calibration = routerCalibration(f, notes)
+  if (!calibration) return { cfg: null, notes }
 
   let cfg: RouterConfig | undefined
   let userOff = userUnreadable
@@ -348,7 +352,10 @@ function argmaxLevel(prob: Record<string, number>): number {
 // The backend's answer as a Classification, calibrated with the profile its identity
 // picks. Every error message goes through sanitize with the key: classifyStatus and
 // parseResponse never quote the backend, and sanitize keeps it that way for the key.
-export function parseClassification(cfg: RouterConfig, b: RouterBackend, status: number, text: string): Result<Classification> {
+// The router's answer read, calibrated and checked; the subagent router reads its own
+// with it too (one choice question), hence only the fields it uses.
+export function parseClassification(cfg: Pick<RouterConfig, 'questions' | 'taskQuestion' | 'calibration'>, b: RouterBackend, status: number,
+  text: string): Result<Classification> {
   const key = isObject(b) && typeof b.key === 'string' ? b.key : ''
   const failed = (f: Failure): Result<Classification> => ({ ok: false, error: { ...f, message: sanitize(f.message, key, 300) } })
   const ids = Object.keys(cfg.questions)

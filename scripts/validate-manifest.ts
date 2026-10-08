@@ -1,5 +1,5 @@
 // Checks the plugin manifests before Claude Code does: plugin.json, marketplace.json,
-// hooks/hooks.json, and the four JSON files of config/. `claude plugin validate` does
+// hooks/hooks.json, and the five JSON files of config/. `claude plugin validate` does
 // not run in CI without installing Claude Code, and it does not see the things that
 // break the plugin only at runtime: versions out of step between the two manifests
 // (the update never arrives), hooks pointing to scripts that do not exist (every event
@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { composeConfig, HOOK_TIMEOUT_S, validateRouter } from '../src/core/config.ts'
+import { composeConfig, HOOK_TIMEOUT_S, validateAgents, validateRouter } from '../src/core/config.ts'
 import { formatProblem, parseJson } from '../src/core/json.ts'
 
 type PlainObject = Record<string, unknown>
@@ -207,7 +207,8 @@ function validateConfig(): void {
   const policy = f('policy.json')
   const calibration = f('calibration.json')
   const router = f('router.json')
-  if (!checks || !policy || !calibration || !router) return
+  const agents = f('agents.json')
+  if (!checks || !policy || !calibration || !router || !agents) return
   const c = composeConfig({ plugin: { checks, policy, calibration }, user: {}, project: {} })
   if (!c.ok) {
     for (const p of c.error.problems ?? []) problems.push(formatProblem(p))
@@ -218,6 +219,12 @@ function validateConfig(): void {
   const r = j.ok ? validateRouter(j.value, c.value.calibration, router.path) : j
   if (!r.ok) {
     for (const p of r.error.problems ?? []) problems.push(formatProblem(p))
+  }
+  const ja = parseJson(agents.text, agents.path)
+  const a = ja.ok ? validateAgents(ja.value, c.value.calibration, agents.path) : ja
+  if (!a.ok) {
+    for (const p of a.error.problems ?? []) problems.push(formatProblem(p))
+    if (!a.error.problems?.length) problems.push(a.error.message)
   }
 }
 

@@ -1,5 +1,5 @@
-// Validation of the four JSON files that decide the behaviour (checks, policy,
-// calibration, router) and composition of the project > user > plugin layers.
+// Validation of the five JSON files that decide the behaviour (checks, policy,
+// calibration, router, agents) and composition of the project > user > plugin layers.
 // "Open a JSON, never touch the code": there is no check id or threshold here, only
 // the shape rules. Every error names file, pointer and what was expected, because
 // whoever opens the JSON to change a threshold must understand alone what they broke.
@@ -13,7 +13,7 @@ import { LIMITS, HOOK_ESCALATION_MODES, EFFORT_SCALE, PROMPT_ORIGIN_KINDS } from
 import type {
   Calibration, CheckDef, Checks, CiConclusion, RouterCondition, ComposedConfig, Lane, WireQuestion, Effort, Result,
   ConfigFile, Json, ConfigLayers, Op, Origin, EffortStep, Policy, Problem, Profile, Rule, Detector,
-  RouterConfig, QuestionType, CalibrationEntry, CacheGuard, Condition,
+  RouterConfig, QuestionType, CalibrationEntry, CacheGuard, Condition, AgentsConfig,
 } from './types.ts'
 
 export type {
@@ -1358,6 +1358,33 @@ function readCacheGuard(l: Reader, v: unknown, p: string): CacheGuard | null | u
   return { min_prefix_tokens: minPrefix, max_read_ratio: ratio, max_gap_ms: gap, trips }
 }
 
+// The questions of a router file (router.json, agents.json): the same validation as
+// checks.json, and only type/instructions/criteria go to the backend.
+function readWireQuestions(l: Reader, qo: PlainObject, pointer: string): Record<string, WireQuestion> {
+  const questions: Record<string, WireQuestion> = {}
+  const ids = fieldsOf(qo)
+  if (ids.length === 0) addProblem(l, pointer, 'no questions')
+  if (ids.length > LIMITS.maxQuestions) addProblem(l, pointer, `${ids.length} questions: at most ${LIMITS.maxQuestions} per request`)
+  for (const id of ids) {
+    const pq = childPointer(pointer, id)
+    if (!RE_ID.test(id)) {
+      addProblem(l, pq, MSG_ID)
+      continue
+    }
+    const d = readObject(l, qo[id], pq)
+    if (!d) continue
+    onlyFields(l, d, pq, ['type', 'instructions', 'criteria'])
+    const type = readOneOf(l, requiredField(l, d, pq, 'type'), childPointer(pq, 'type'), QUESTION_TYPES)
+    if (!type) continue
+    const parsed = readQuestion(l, type, d, pq)
+    if (!parsed) continue
+    const w: WireQuestion = { type, instructions: parsed.instructions as WireQuestion['instructions'] }
+    if (parsed.criteria !== undefined) w.criteria = parsed.criteria
+    questions[id] = w
+  }
+  return questions
+}
+
 export function validateRouter(json: unknown, calibration: Calibration, file: string): Result<RouterConfig> {
   const l = reader(file)
   const o = readObject(l, json, '')
@@ -1400,30 +1427,8 @@ export function validateRouter(json: unknown, calibration: Calibration, file: st
   const guard = readCacheGuard(l, r('cache_guard'), p('cache_guard'))
 
   // questions: the same validation as checks.json, and only type/instructions/criteria go to the backend
-  const questions: Record<string, WireQuestion> = {}
   const qo = readObject(l, r('questions'), p('questions'))
-  if (qo) {
-    const ids = fieldsOf(qo)
-    if (ids.length === 0) addProblem(l, p('questions'), 'no questions')
-    if (ids.length > LIMITS.maxQuestions) addProblem(l, p('questions'), `${ids.length} questions: at most ${LIMITS.maxQuestions} per request`)
-    for (const id of ids) {
-      const pq = childPointer(p('questions'), id)
-      if (!RE_ID.test(id)) {
-        addProblem(l, pq, MSG_ID)
-        continue
-      }
-      const d = readObject(l, qo[id], pq)
-      if (!d) continue
-      onlyFields(l, d, pq, ['type', 'instructions', 'criteria'])
-      const type = readOneOf(l, requiredField(l, d, pq, 'type'), childPointer(pq, 'type'), QUESTION_TYPES)
-      if (!type) continue
-      const parsed = readQuestion(l, type, d, pq)
-      if (!parsed) continue
-      const w: WireQuestion = { type, instructions: parsed.instructions as WireQuestion['instructions'] }
-      if (parsed.criteria !== undefined) w.criteria = parsed.criteria
-      questions[id] = w
-    }
-  }
+  const questions = qo ? readWireQuestions(l, qo, p('questions')) : {}
 
   // The task-kind question has no fixed id in the code: it is the choice whose options
   // match the keys of base.
@@ -2200,4 +2205,107 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
       userProblems,
     },
   }
+}
+
+// ═══ agents.json ═══
+
+const AGENTS_FIELDS = [
+  'version', 'enabled', 'timeout_ms', 'max_in_flight', 'prompt_max_chars', 'prompt_head_chars', 'from_models',
+  'respect_explicit_model', 'skip_types', 'workflow_agents', 'min_top_probability', 'route', 'questions',
+] as const
+// A model id or an alias as the Agent tool takes it (claude-haiku-5-5, haiku): no
+// spaces or quotes, so it can only name a model, never carry text to the engine.
+const RE_MODEL = /^[a-z][a-z0-9.-]{0,63}$/
+
+export function validateAgents(json: unknown, calibration: Calibration, file: string): Result<AgentsConfig> {
+  const l = reader(file)
+  const o = readObject(l, json, '')
+  if (!o) return readResult<AgentsConfig>(l, undefined, 'agents.json')
+  onlyFields(l, o, '', AGENTS_FIELDS)
+  if (o.version !== undefined) readNumber(l, o.version, '/version', { integer: true, min: 1, max: 1 })
+  const before = l.problems.length
+  const r = (k: string): unknown => requiredField(l, o, '', k)
+  const p = (k: string): string => childPointer('', k)
+
+  const enabled = readBoolean(l, r('enabled'), p('enabled'))
+  // the spawn waits for the answer: the same bounds as the router's race
+  const timeout = readNumber(l, r('timeout_ms'), p('timeout_ms'), { integer: true, min: 50, max: 30_000 })
+  const inFlight = readNumber(l, r('max_in_flight'), p('max_in_flight'), { integer: true, min: 1, max: 16 })
+  const maxChars = readNumber(l, r('prompt_max_chars'), p('prompt_max_chars'), { integer: true, min: 1, max: 100_000 })
+  const headChars = readNumber(l, r('prompt_head_chars'), p('prompt_head_chars'), { integer: true, min: 0, max: 100_000 })
+  if (maxChars !== undefined && headChars !== undefined && headChars > maxChars) addProblem(l, p('prompt_head_chars'), `must be ≤ prompt_max_chars (${maxChars})`)
+  const texts = (k: string, min: number): string[] | undefined => readListOf(l, r(k), p(k), (x, px) => readString(l, x, px, { nonEmpty: true }), { min })
+  const fromModels = texts('from_models', 1)
+  const respect = readBoolean(l, r('respect_explicit_model'), p('respect_explicit_model'))
+  const skipTypes = texts('skip_types', 0)
+  const workflow = readBoolean(l, r('workflow_agents'), p('workflow_agents'))
+  const minTop = readNumber(l, r('min_top_probability'), p('min_top_probability'), { min: 0, max: 1 })
+
+  const qo = readObject(l, r('questions'), p('questions'))
+  const questions = qo ? readWireQuestions(l, qo, p('questions')) : {}
+  // One question, a choice: its options are what route maps.
+  let taskQuestion: string | undefined
+  if (qo) {
+    const ids = fieldsOf(qo)
+    if (ids.length !== 1) addProblem(l, p('questions'), `${ids.length} questions: agents.json asks exactly one, a choice`)
+    else if (questions[ids[0]] && questions[ids[0]].type !== 'choice') addProblem(l, childPointer(p('questions'), ids[0]), 'expected a choice question')
+    else if (questions[ids[0]]) taskQuestion = ids[0]
+  }
+
+  const route: Record<string, string> = {}
+  const ro = readObject(l, r('route'), p('route'))
+  if (ro) {
+    const opts = taskQuestion ? optionsOf(questions[taskQuestion]) : []
+    for (const k of fieldsOf(ro)) {
+      const pk = childPointer(p('route'), k)
+      if (taskQuestion && !opts.includes(k)) {
+        addProblem(l, pk, `unknown option: "${taskQuestion}" has ${opts.join(', ')}`)
+        continue
+      }
+      const m = readString(l, ro[k], pk, { nonEmpty: true })
+      if (m === undefined) continue
+      if (!RE_MODEL.test(m)) {
+        addProblem(l, pk, 'expected a model id or alias: lowercase letters, digits, "." and "-", at most 64 characters')
+        continue
+      }
+      route[k] = m
+    }
+  }
+
+  if (l.problems.length > before || enabled === undefined || timeout === undefined || inFlight === undefined || maxChars === undefined
+    || headChars === undefined || !fromModels || respect === undefined || !skipTypes || workflow === undefined || minTop === undefined
+    || !taskQuestion) {
+    return readResult<AgentsConfig>(l, undefined, 'agents.json')
+  }
+  return readResult<AgentsConfig>(l, {
+    enabled, timeout_ms: timeout, max_in_flight: inFlight, prompt_max_chars: maxChars, prompt_head_chars: headChars,
+    from_models: fromModels, respect_explicit_model: respect, skip_types: skipTypes, workflow_agents: workflow,
+    min_top_probability: minTop, route, questions, taskQuestion, calibration, file,
+  }, 'agents.json')
+}
+
+// .jev-hooks/agents.json: from the project only `enabled: false`. A cloned repository
+// must not be able to send your subagents to a cheaper model, nor to one of its
+// choice: route, thresholds and texts are never read from it.
+const AGENTS_WORDS: ReadonlySet<string> = new Set(AGENTS_FIELDS)
+
+export function agentsRestrictions(base: AgentsConfig, json: unknown, file: string): { agents: AgentsConfig; notes: string[] } {
+  const notes: string[] = []
+  let ignored = 0
+  if (!isObject(json)) return { agents: base, notes: [`${file}: invalid, ignored (expected an object)`] }
+  const agents: AgentsConfig = { ...base }
+  for (const k of fieldsOf(json)) {
+    if (k === 'version') continue
+    if (k === 'enabled') {
+      if (json[k] === false) agents.enabled = false
+      else if (json[k] !== true && ++ignored <= SHOWN_IGNORED_FIELDS) notes.push(`${file} ${safePointer(childPointer('', k), AGENTS_WORDS)}: field ignored: expected true or false`)
+      continue
+    }
+    if (++ignored <= SHOWN_IGNORED_FIELDS) {
+      notes.push(`${file} ${safePointer(childPointer('', k), AGENTS_WORDS)}: field ignored: from the project the subagent router only accepts "enabled": false`)
+    }
+  }
+  const more = ignored - SHOWN_IGNORED_FIELDS
+  if (more > 0) notes.push(`${file}: ${more} more ${more === 1 ? 'field' : 'fields'} ignored`)
+  return { agents, notes }
 }
