@@ -5,6 +5,16 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- Fewer hardcoded-secret escalations on commits split into chunks: the model's question
+  escalates at 0.30 instead of 0.15, and a new deterministic detector, `env_default`,
+  catches a credential written as the default of an environment read
+  (`os.getenv("DB_PASSWORD", "…")`, `process.env.API_KEY ?? "…"`), which
+  `secret_assignment` leaves out. The detectors now catch 19 of the 20 bench positives
+  with no false hit on the 219 negatives; the one left to the model scores 0.88. On 126
+  real multi-chunk commits, escalations drop from 19 to 3.
+
 ## 0.22.0 — 2026-10-09
 
 A subagent router: subagents that check a claim or label against a definition run on

@@ -264,3 +264,25 @@ test('every default regex stays under 50 ms on a hostile 2000-character line', (
   }
   assert.deepEqual(slow, [])
 })
+
+test('env_default: a credential written as the default of an environment read, in code, not in tests', () => {
+  const v = random(24)
+  for (const line of [
+    `DB_PASSWORD = os.getenv("DB_PASSWORD", "${v}")`,
+    `secret = os.environ.get('APP_SECRET_KEY', '${v}')`,
+    `'key' => env('STRIPE_API_KEY', '${v}'),`,
+    `token = ENV.fetch("GITHUB_TOKEN", "${v}")`,
+    `const clientSecret = process.env.OIDC_CLIENT_SECRET ?? '${v}'`,
+    `const key = process.env.ACCESS_KEY || "${v}"`,
+  ]) assert.ok(hits('env_default', 'app/config.py', line), line)
+  for (const line of [
+    `DB_PASSWORD = os.getenv("DB_PASSWORD")`,
+    `DB_HOST = os.getenv("DB_HOST", "${v}")`,
+    `DB_PASSWORD = os.getenv("DB_PASSWORD", "changeme-local-dev")`,
+    `DB_PASSWORD = os.getenv("DB_PASSWORD", "dev")`,
+    `const secret = process.env.APP_SECRET ?? ''`,
+    `const secret = process.env.APP_SECRET ?? '\${FALLBACK_SECRET_VALUE}'`,
+  ]) assert.equal(hits('env_default', 'app/config.py', line), false, line)
+  // fixtures and tests are skipped, as by the other secret detectors
+  assert.equal(hits('env_default', 'tests/test_config.py', `DB_PASSWORD = os.getenv("DB_PASSWORD", "${v}")`), false)
+})

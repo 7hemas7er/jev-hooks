@@ -82,7 +82,7 @@ are in `bench/results/`.
 
 | Question | Form sent | AUROC dev | AUROC holdout | Rule in `policy.json` | dev TPR · FPR | holdout TPR · FPR |
 |---|---|--:|--:|---|---|---|
-| hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.15 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.91 (10/11) · 0.009 (1/110) |
+| hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.30 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.73 (8/11) · 0.009 (1/110) |
 | injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate, unless docs only | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
 | touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate, unless docs only | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
 | weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.30 | 1.00 (9/9) · 0.018 (2/109) | 0.92 (11/12) · 0.009 (1/109) |
@@ -151,6 +151,18 @@ removed all 17 false escalations on those commits but kept only 8 of the holdout
 caught positives at best, missing a GitHub token in a CI workflow and a webhook
 secret, and missed the one real positive. A missed secret has to be revoked; a false
 escalation costs one look by Claude. The question stays as it is.
+
+**Why `hardcoded_secret` escalates at 0.30.** The question's TPR in the table counts
+the model alone, but every positive it misses is caught by a deterministic detector:
+on the bench as the measurement composes it, the detectors catch 19 of the 20 positives
+and hit none of the 219 negatives, since `env_default` (a credential written as the
+default of an environment read, which `secret_assignment` leaves out because it ignores
+`getenv` and `process.env`) joined them on 2026-10-09. The one positive left to the
+model scores 0.88. Below 0.30 the question only added noise where a diff is split into
+chunks: on 126 real multi-chunk commits it escalated 19 at 0.15 and 3 at 0.30. The cost
+is one borderline real case, a development client secret written as such a default in
+a live test file (every secret detector skips test paths, as it does fixtures), which
+scored 0.228.
 
 **Why the model never blocks on its own (policy v2).** With the first policy, where
 model rules could reach BLOCK, 10 of the holdout's 34 clean diffs were blocked. Eight
