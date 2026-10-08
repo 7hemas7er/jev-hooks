@@ -535,3 +535,83 @@ and scores), the latency against `timeout_ms`, and end to end, for a session at
 `xhigh` and at `high`, how often the chosen effort falls **under** the label (the
 risk), matches it, or stays **over** it (a missed saving). The outputs hold ids,
 numbers and hashes: no prompt text, no host, no key.
+
+## `agents-dev.jsonl`: task prompts for the subagent router
+
+The subagent router's counterpart of `router-dev.jsonl`: 120 task prompts as a coding
+agent or a workflow script writes them for a subagent (104 English, 16 Italian),
+measured with `scripts/measure-agents.ts` (below). Each row has the prompt text and its
+labels:
+
+```json
+{"id": "check_claim-…", "language": "en", "text": "…", "labels": {"agent_task": "check_claim", "tier": "small", "open_judgement": false, "writes_files": false, "material": 1, "final_say": false}}
+```
+
+- `agent_task` follows the criteria of `config/agents.json` literally: the main kind
+  of work the subagent must hand back.
+- `tier` is the smallest model class expected to do the task as well as a frontier
+  model, a prior written from the other labels: `small` for locating, extracting, or
+  checking a claim against one place, with little to read and no open judgement;
+  `medium` for summarising, labelling against a written definition, research, other
+  claims, a review that is one vote among several, a fully specified edit; `large` for
+  design, debugging, an edit that is not fully specified, and anything with the final
+  say and open judgement.
+- `open_judgement`, `writes_files`, `material` (0–3) and `final_say` describe the task;
+  they are kept for later questions and are not scored.
+
+The rows were written on 2026-10-08 by an agent that saw only these definitions, never
+`agents.json`'s route or the measurements, and labelled again, blind, by a second
+agent: `agent_task` agreed on 120 of 120 rows, `tier` on 118 (the two others are
+`null`), `final_say` on 113, `material` on 107 (the disagreements are `null`). Both
+labellers were Opus 5.5: the agreement says the definitions read one way, not that two
+independent kinds of reader would agree.
+
+### Real task prompts (kept outside the repo)
+
+199 subagents of this repository's own sessions (186 workflow agents, 30 Agent tool
+spawns), grouped into 31 distinct tasks, labelled by two agents: `agent_task` and
+`tier` agreed on 31 of 31. They are private (they quote the repository's paths and the
+maintainer's requests); only these counts are published. Their kinds: label 13,
+check_claim 8, implement 5, review 3, summarize 1, research 1; tier medium 24, large 7,
+small 0. Measured with the shipped agents.json on 2026-10-09: agent_task 24/31 right
+(the long real prompts get a lower top probability, mean 0.49); the route moves 15 of
+the 31 tasks, about 28% of their subagents' cache-read tokens, and one wrongly (a
+dataset writer read as `label` at 0.65, 0.3% of the tokens).
+
+### Why Haiku 5.5 for check_claim and label
+
+The route was chosen on what each model did, not on the prior: on 2026-10-08 the same
+tasks, with known answers, ran on Opus 5.5, Sonnet 5.5 and Haiku 5.5 (material kept
+outside the repo; it quotes this repository's code).
+
+| tasks | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 |
+|---|--:|--:|--:|
+| 22 single-function claims about the code, truth computed by running it | 22 | 21 | 22 |
+| 30 multi-file claims (verdict, diff, router), truth scripts audited independently | 30 | 29 | 29 |
+| 4 × 26 holdout rows labelled against the bench definitions, twice | 208/208 | 207/208 | 201/208 |
+
+Haiku's misses: one true claim dismissed (a mask term that survives only in git's octal
+escape of a path), and on `breaks_api` and `description_matches` the same few rows
+both times, mostly false positives. At list prices its runs cost about a twentieth of
+Opus's; Sonnet 5.5 costs half of Opus on input and output but the same on cache reads,
+which dominate a subagent's tokens. The sample is small and drawn from one repository:
+the route covers only the two kinds where the evidence is.
+
+### Measuring and replaying
+
+```bash
+node scripts/measure-agents.ts --out bench/results/YYYY-MM-DD-agents-dev --url URL --date YYYY-MM-DD
+node scripts/measure-agents.ts --replay bench/results/YYYY-MM-DD-agents-dev --config /tmp/trial-agents.json
+```
+
+A measurement sends one request per task prompt, built by `agentRequest` with the
+plugin's `agents.json` (or `--config`, as the user layer), read by
+`parseClassification` and decided by `chooseModel`, as in the function hook; a replay
+recomputes the report from `raw.jsonl` with today's `route` and
+`min_top_probability`, without the network. The report gives agent_task's accuracy
+and confusion table, and end to end how many rows move to a route's model, how many of
+those are labelled `large` (**wrongly moved**, the risk) and how many rows labelled
+small or medium stay (a missed saving). No prompt text, no host, no key.
+
+`results/2026-10-09-agents-dev`: agent_task 108/120 (90%), mean top probability 0.74;
+34 rows moved, one wrongly (a `debug` task read as `check_claim` at 0.83).
