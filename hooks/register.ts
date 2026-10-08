@@ -404,8 +404,10 @@ export const register: Register = (on, options) => {
       const s: AgentSpawn = {
         subagentType: e.subagentType, parentModel: e.parentModel, fork: e.fork === true,
         ...(typeof e.model === 'string' ? { model: e.model } : {}),
-        ...(e.isTeammate === true ? { isTeammate: true } : {}),
-        ...(e.workflow !== undefined ? { workflow: true } : {}),
+        // read with `in`: the declarations before 2.1.294 lack both fields, and the compat
+        // job type-checks this file against 2.1.284's
+        ...('isTeammate' in e && e.isTeammate === true ? { isTeammate: true } : {}),
+        ...('workflow' in e && e.workflow !== undefined ? { workflow: true } : {}),
       }
       let key = ''
       // Every return leaves the spawn as it is: the single next(arg) is below.
