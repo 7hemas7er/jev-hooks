@@ -7,7 +7,10 @@ router: a function hook (`hooks/register.ts`, early access, off unless the
 `effort_router` option is true) that asks the same backend what kind of request a
 prompt is and lowers that turn's effort. Its decisions are pure functions in
 `src/core/router.ts`; its questions and thresholds are in `config/router.json`. The
-same module draws a status line (the `status_line` option, on by default): the version
+same module holds the subagent router (`agent_router` option, off by default):
+`agent.spawn` asks the backend what kind of task a subagent was given and moves the
+ones `config/agents.json` routes to a cheaper model; its decisions are in
+`src/core/agents.ts`. The same module draws a status line (the `status_line` option, on by default): the version
 the session runs, a newer one installed, the last commit review, from
 `src/core/status-line.ts`. The README, the pages in `docs/`, this file and the
 comments in the code are the reference. The maintainer's design notes are not

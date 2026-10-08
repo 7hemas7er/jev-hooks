@@ -15,7 +15,10 @@ precise points to check, never as a verdict to obey.
 The same plugin holds an **effort router**, off unless you turn it on: the same
 backend answers seven questions about each prompt you type, and `config/router.json`
 turns the answers into the effort of that turn, never above the one your session asks
-for. A rename does not need the reasoning a design question needs.
+for. A rename does not need the reasoning a design question needs. And a **subagent
+router**, off too: before a subagent starts, one question about its task prompt, and a
+subagent that checks a stated claim or labels items against a written definition runs
+on Claude Haiku 5.5 (`config/agents.json`).
 
 > **Status: public preview.** The commit reviewer, the `/jev-review` and `/jev-status`
 > skills and the `jev-review` CLI work. The
@@ -66,6 +69,7 @@ Three question types, as in Jev:
 | `/jev-review` and `/jev-status` skills | **works** | Review on demand and a backend check, served by a hook so they run outside the sandbox; see [On demand](docs/how-it-works.md#on-demand-jev-review-and-jev-status) |
 | Guard on `.jev-hooks/` edits (`PreToolUse` hook on Edit and Write) | **works** | Asks before Claude edits the project's reviewer rules with its editing tools |
 | Effort router (function hook, `hooks/register.ts`) | built, opt-in, early access; checked live on Opus 5.5, Fable 5.1 and Sonnet 5.5 | Lowers the effort of a turn from observable features of your prompt, never above the session's (`config/router.json`); see [Effort router](docs/router.md#effort-router-opt-in) |
+| Subagent router (function hook, `hooks/register.ts`) | built, opt-in, early access; the model rewrite it relies on checked live on Claude Code 2.1.294 with a probe, the plugin itself not yet | Moves the subagents that check a claim or label against a definition to Claude Haiku 5.5, never one whose model was chosen (`config/agents.json`); see [Subagent router](docs/agents.md#subagent-router-opt-in) |
 | GitHub Action (`action.yml`) | built; run on real pull requests, a fork's included: rizzo over the tailnet, a required check from a dedicated App that a same-named job cannot imitate | Two-phase review of pull requests, safe for forks, with a `jev-review` check run; see [GitHub Action](docs/action.md#github-action) |
 
 ## How it works
@@ -109,6 +113,7 @@ which backend to run is in [docs/backends.md](docs/backends.md).
 | [GitHub Action](docs/action.md) | Two-phase review of pull requests, safe for forks, with a `jev-review` check run |
 | [Configuration](docs/configuration.md) | The JSON files, their layers, and what a project can and cannot change |
 | [Effort router](docs/router.md) | The opt-in router: what it needs, decides and sends, its switches and its measurements |
+| [Subagent router](docs/agents.md) | The opt-in router for subagents: which ones it moves to a cheaper model, workflow agents, switches, measurements |
 | [Evaluation](docs/evaluation.md) | The measured bench, the evaluation protocol and the calibration still to do |
 | [Security](docs/security.md) | The security model, the full threat model, reporting a vulnerability |
 | [Limitations](docs/limitations.md) | What the model, the bench and the hook cannot do |

@@ -6,6 +6,7 @@
 | `policy.json` | Lanes and their order, rules and thresholds, detectors and floors, escalation behaviour, chunk and time limits |
 | `calibration.json` | Per-backend profiles (matched by fingerprint, model or host): a Platt scaling per question, temperatures, the uncertainty band. On a fitted question the decision stays on the raw value against the policy's threshold, and the threshold is shown moved through the fit, so a fit changes no verdict; an explicit threshold in a calibrated profile replaces the policy's value, except where a project's rule is stricter |
 | `router.json` | The effort router's questions, the effort each answer leads to, its timing and its cache guard |
+| `agents.json` | The subagent router's question, which answers move a subagent to which model, its timing ([Subagent router](agents.md#configuration)) |
 
 Every key starting with `_` is a note for humans: the defaults explain each threshold
 in its `_why`, with the numbers it was chosen on. `jev-review explain <check>` prints
@@ -35,6 +36,8 @@ removing a floor would take one line. So:
   lower its cap (`"max_effort"`); every other field is ignored with a note that names
   it (the first three; past them one note gives how many more), and no note quotes the
   file;
+- a project `agents.json` can only turn the subagent router off (`"enabled": false`):
+  it can never send your subagents to a cheaper model or to one of its choice;
 - a project `checks.json` can add questions (for its own rules in `policy.json`) and
   rewrite the trusted ones no rule uses; its texts are never shown to Claude, and its
   regexes run in a worker with a time limit. Every check a trusted rule, `unless` or

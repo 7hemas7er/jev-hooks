@@ -5,6 +5,26 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Added
+
+- A subagent router, opt-in (`agent_router`, off by default; Claude Code 2.1.294 or
+  later with function hooks). Before a subagent starts, the backend answers one
+  question about its task prompt (`agent_task`), and a subagent that checks a stated
+  claim or labels items against a written definition runs on Claude Haiku 5.5: an
+  Agent tool spawn through `agent.spawn`, a workflow agent at every one of its requests
+  through `turn.step`. Forks, teammates and subagents whose caller named a model are
+  never touched; a project's `.jev-hooks/agents.json` can only turn it off. On tasks
+  with known answers Haiku 5.5 matched Opus 5.5 on 51 of 52 code claims and 201 of 208
+  bench labels at about a twentieth of the cost; see `docs/agents.md`.
+- `config/agents.json`, `bench/agents-dev.jsonl` and `scripts/measure-agents.ts`.
+- The status line counts the subagents moved in the session.
+
+### Changed
+
+- The effort router's request path (`textRequest`), calibration layer
+  (`routerCalibration`) and file reading are shared with the subagent router; what the
+  effort router sends is unchanged.
+
 ## 0.21.0 — 2026-10-07
 
 Fewer weakened-tests escalations on commits that only change tests alongside code.
