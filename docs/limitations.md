@@ -73,6 +73,16 @@
 - **The router's thresholds are not fitted.** Its questions are measured on 240
   labelled prompts, but the thresholds were set by hand, and `underspecified` does not
   separate ([Measured, not fitted](router.md#measured-not-fitted)).
+- **The subagent router rests on early-access APIs too, and on a small sample.** It
+  needs Claude Code 2.1.294 or later, where `agent.spawn` can set a subagent's model;
+  it was checked live on 2.1.294 (an Agent tool spawn and workflow agents moved to
+  Haiku 5.5, a design agent left on Opus). Its route rests on 52 code claims and
+  208 labels with known answers and on 31 real task kinds, all from this repository; the
+  0.4 threshold is not fitted, and one real task in 31 was moved wrongly
+  ([Measured, not fitted](agents.md#measured-not-fitted)).
+- **A moved workflow agent believes it is the parent's model.** Its system prompt was
+  built for the parent's model before `turn.step` changed the request, so it may say it
+  is Opus while Haiku answers; the API response's model is what counts.
 - **Platforms.** Developed on Linux; CI runs Node 22.18 and 24 on Ubuntu. Windows is
   untested (the hook launcher is a bash script; the router needs no bash, but it has
   not been tested there either).
