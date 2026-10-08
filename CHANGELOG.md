@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.23.0 — 2026-10-09
+
+Fewer hardcoded-secret escalations on commits split into chunks.
+
 ### Changed
 
 - Fewer hardcoded-secret escalations on commits split into chunks: the model's question

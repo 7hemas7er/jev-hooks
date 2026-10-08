@@ -6,6 +6,6 @@
   "plugins": [
     { "name": "jev-hooks",
       "description": "Commit reviewer and per-turn effort router with typed questions (Jev or rizzo-flow): commit hook, jev-review CLI and a function hook",
-      "version": "0.22.0", "category": "security", "source": "./" }
+      "version": "0.23.0", "category": "security", "source": "./" }
   ]
 }
