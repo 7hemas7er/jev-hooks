@@ -16,7 +16,7 @@ import { formatNumber } from '../../src/core/numbers.ts'
 import {
   GUARD_START, ROUTER_FILES, cacheGuard, chooseEffort, clipPrompt, decisionLine, effectiveRouterConfig, fetchFailure, guardLine,
   maxEffort, minEffort, modelAllowed, parseClassification, prepareRequest, routerBackend, routerLogLine, shiftEffort, statusLine,
-  userConfigDir,
+  textRequest, userConfigDir,
 } from '../../src/core/router.ts'
 import { neutralize } from '../../src/core/state.ts'
 import { validateBody } from '../../src/core/systemone.ts'
@@ -489,6 +489,26 @@ test('prepareRequest: towards a local backend the prompt goes as it is, towards 
   assert.equal(again.init.body, r.init.body)
   // without a map: redacted only
   assert.match(body(prepareRequest(CFG, composer(text), REMOTE, NO_MASK, 1)).state, /^deploy qzrealproject with /)
+})
+
+test('textRequest: what prepareRequest sends once its gates pass, with the clip and questions given', () => {
+  const rnd = generator(11)
+  const text = `deploy qzrealproject with ${highEntropyValue(40, rnd)}\n${pad(6000)}`
+  const map = { text: 'qzrealproject\tplaceholderqz\n' }
+  const clip = { max: CFG.prompt_max_chars, head: CFG.prompt_head_chars }
+  for (const b of [LOCAL, REMOTE]) {
+    assert.deepEqual(textRequest(text, b, map, 3, clip, CFG.questions), prepareRequest(CFG, composer(text), b, map, 3))
+  }
+  // the gates are prepareRequest's: textRequest sends a text prepareRequest would skip
+  assert.equal('skip' in prepareRequest(CFG, composer('/clear'), LOCAL, map, 3), true)
+  assert.equal(body(textRequest('/clear', LOCAL, map, 3, clip, CFG.questions)).state, '/clear')
+  // another clip and another question set reach the body
+  const one = { only: CFG.questions[Object.keys(CFG.questions)[0]] }
+  const r = textRequest(text, LOCAL, map, 3, { max: 100, head: 60 }, one)
+  assert.equal(body(r).state, clipPrompt(text, 100, 60))
+  assert.deepEqual(Object.keys(body(r).questions), ['only'])
+  // a mask map that cannot be used still stops a non-local request
+  assert.deepEqual(textRequest(text, REMOTE, { text: null, error: 'unreadable' }, 3, clip, CFG.questions).problem, true)
 })
 
 // Spaces at both ends, words in between: nothing in it can join a token or a term, and

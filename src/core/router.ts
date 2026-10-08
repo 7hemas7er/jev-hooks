@@ -243,19 +243,8 @@ function originKind(e: unknown): string {
   return isObject(origin) && typeof origin.kind === 'string' ? origin.kind : 'unclassified'
 }
 
-// What goes to the backend for one prompt, or why nothing goes. The state is the
-// prompt as plain text (rizzo wraps a string state in its own evidence tag): towards a
-// backend that leaves the machine, redacted and masked like the reviewer's diff (redact
-// first, then mask), then clipped, and neutralized last, so no step can reintroduce the
-// tag. Redaction and masking see the whole prompt, before the clip: a cut through a
-// secret or a mask term would leave two pieces too short to match, and a PEM block
-// whose BEGIN line falls in the dropped middle would lose what marks it; clipping
-// afterwards only cuts through substitutes. So redactions counts the whole prompt,
-// the middle the clip drops included. Towards a local backend: clipped, neutralized.
-//
-// A mask map that exists but cannot be read, or cannot be looked for (error 'no home':
-// neither HOME nor GUARDRAIL_MASK_MAP), stops the request towards a non-local backend,
-// as it stops the reviewer's: a skip with problem, which the user must hear about.
+// What goes to the backend for one prompt, or why nothing goes: the effort router's
+// gates (origin, empty text, skip prefixes), then textRequest.
 export function prepareRequest(cfg: RouterConfig, e: { text: string; origin?: { kind?: string } | null },
   b: RouterBackend, maskFile: { text: string | null; error?: string }, seed: number): RouterRequest {
   const kind = originKind(e)
@@ -269,6 +258,25 @@ export function prepareRequest(cfg: RouterConfig, e: { text: string; origin?: { 
   const prefix = cfg.skip_prefixes.find((x) => lead.startsWith(x))
   if (prefix !== undefined) return { skip: `starts with "${prefix}"` }
 
+  return textRequest(text, b, maskFile, seed, { max: cfg.prompt_max_chars, head: cfg.prompt_head_chars }, cfg.questions)
+}
+
+// The request for one text, shared by the effort router (a prompt) and the subagent
+// router (a task prompt), or why nothing goes. The state is the text as plain text
+// (rizzo wraps a string state in its own evidence tag): towards a backend that leaves
+// the machine, redacted and masked like the reviewer's diff (redact first, then mask),
+// then clipped, and neutralized last, so no step can reintroduce the tag. Redaction
+// and masking see the whole prompt, before the clip: a cut through a
+// secret or a mask term would leave two pieces too short to match, and a PEM block
+// whose BEGIN line falls in the dropped middle would lose what marks it; clipping
+// afterwards only cuts through substitutes. So redactions counts the whole prompt,
+// the middle the clip drops included. Towards a local backend: clipped, neutralized.
+//
+// A mask map that exists but cannot be read, or cannot be looked for (error 'no home':
+// neither HOME nor GUARDRAIL_MASK_MAP), stops the request towards a non-local backend,
+// as it stops the reviewer's: a skip with problem, which the user must hear about.
+export function textRequest(text: string, b: RouterBackend, maskFile: { text: string | null; error?: string }, seed: number,
+  clip: { max: number; head: number }, questions: RouterConfig['questions']): RouterRequest {
   let source = text
   let redactions = 0
   if (!b.local) {
@@ -285,8 +293,8 @@ export function prepareRequest(cfg: RouterConfig, e: { text: string; origin?: { 
     redactions = r.redactions
     source = pairs.length > 0 ? mask(r.text, pairs) : r.text
   }
-  const state = neutralize(clipPrompt(source, cfg.prompt_max_chars, cfg.prompt_head_chars)).text
-  const body = { state, model: b.model, questions: cfg.questions }
+  const state = neutralize(clipPrompt(source, clip.max, clip.head)).text
+  const body = { state, model: b.model, questions }
   const problems = validateBody(body)
   if (problems.length > 0) return { skip: `request outside the limits shared by Jev and rizzo-flow: ${problems[0].message}` }
   return { url: b.url, init: { method: 'POST', headers: requestHeaders(b), body: JSON.stringify(body) }, redactions }
