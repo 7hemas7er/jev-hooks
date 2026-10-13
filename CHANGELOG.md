@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.23.1 — 2026-10-13
+
+The log names the backend the same way on a cached review.
+
 ### Fixed
 
 - A review replayed from the cache (the second attempt after an escalation) logged the
