@@ -369,10 +369,12 @@ async function examine(intent: CommitIntent, a: CommitRun, maskMap: readonly Mas
   const cached = useCache ? readCache(dataDir, key(seenFingerprint(dataDir, url)), p.hook.cache_ttl_min) : undefined
 
   let result: ReviewResult
-  let identity: Identity | undefined
+  let identity: Pick<Identity, 'model' | 'fingerprint'> | undefined
   let rules: Examination['rules']
-  if (cached) result = cached
-  else {
+  if (cached) {
+    result = cached.result
+    identity = cached.identity
+  } else {
     const recorded = new Map<string, HttpOutcome>()
     const real = a.ctx.transport ?? nodeTransport()
     const transport: Transport = async (rq) => {
@@ -391,7 +393,7 @@ async function examine(intent: CommitIntent, a: CommitRun, maskMap: readonly Mas
     const seen = result.backend.fingerprint ?? (result.backend.model !== undefined ? `model ${result.backend.model}` : undefined)
     if (url !== '' && seen !== undefined) {
       recordFingerprint(dataDir, url, seen)
-      if (useCache) writeCache(dataDir, key(seen), result, p.hook.cache_ttl_min)
+      if (useCache) writeCache(dataDir, key(seen), { result, identity }, p.hook.cache_ttl_min)
     }
     if (cfg.modifiedRules.length > 0) {
       const deny = p.lanes.find((l) => l.name === result.lane)?.hook === 'deny'

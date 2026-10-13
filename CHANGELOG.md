@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- A review replayed from the cache (the second attempt after an escalation) logged the
+  backend's model as the hash shown to Claude instead of its real name, so the same
+  backend appeared in the log under two names. The cache now keeps the identity.
+
 ## 0.23.0 — 2026-10-09
 
 Fewer hardcoded-secret escalations on commits split into chunks.

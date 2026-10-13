@@ -221,6 +221,8 @@ test('escalation (deny_then_allow, the default): deny with the prompt, then the 
     // the second attempt comes from the cache: the same review, no new request
     const log = logLines(pr).filter((x) => x.outcome === 'ok')
     assert.equal(log[1]?.from_cache, true)
+    // and names the backend as the first did: the real model, not the hash shown to Claude
+    assert.deepEqual(log[1]?.backend, log[0]?.backend)
 
     // a different diff is another key: deny again
     pr.r.write('src/app/middleware.py', 'def middleware(request):\n    request.user = None\n    return request\n')

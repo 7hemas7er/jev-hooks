@@ -242,20 +242,35 @@ const FINGERPRINT_FILE = 'fingerprint.json'
 
 // A review already done on the same diff, with the same configuration and the same
 // backend: a new commit attempt gets an answer right away.
-export function readCache(dataDir: string, key: string, deadlineMin: number, now: number = Date.now()): ReviewResult | undefined {
+// The result names the backend as Claude sees it (a hash when the trusted
+// configuration does not know it); the identity is the real name and fingerprint,
+// kept so that a review replayed from the cache logs the same backend as the first.
+export interface CacheEntry { result: ReviewResult; identity?: Pick<Identity, 'model' | 'fingerprint'> }
+
+export function readCache(dataDir: string, key: string, deadlineMin: number, now: number = Date.now()): CacheEntry | undefined {
   if (deadlineMin <= 0) return undefined
   const file = join(dataDir, 'cache', `${key}.json`)
   if (!isFresh(file, deadlineMin * 60_000, now)) return undefined
-  const v = readJsonFile(file) as { result?: ReviewResult } | undefined
-  return v?.result?.outcome === 'ok' ? v.result : undefined
+  const v = readJsonFile(file) as Partial<CacheEntry> | undefined
+  if (v?.result?.outcome !== 'ok') return undefined
+  const id = v.identity
+  const identity = id !== undefined && typeof id === 'object' && typeof id.model === 'string'
+    && (id.fingerprint === undefined || typeof id.fingerprint === 'string')
+    ? { model: id.model, ...(id.fingerprint !== undefined ? { fingerprint: id.fingerprint } : {}) }
+    : undefined
+  return identity !== undefined ? { result: v.result, identity } : { result: v.result }
 }
 
 // Only ok outcomes: an error, an incomplete or approximate review is not reused (the
 // caller decides for the approximate ones, which the result does not tell apart).
-export function writeCache(dataDir: string, key: string, r: ReviewResult, deadlineMin: number): void {
+export function writeCache(dataDir: string, key: string, e: CacheEntry, deadlineMin: number): void {
+  const r = e.result
   if (r.outcome !== 'ok' || deadlineMin <= 0) return
   const dir = join(dataDir, 'cache')
-  writeAtomic(join(dir, `${key}.json`), JSON.stringify({ result: r }))
+  const identity = e.identity !== undefined
+    ? { model: e.identity.model, ...(e.identity.fingerprint !== undefined ? { fingerprint: e.identity.fingerprint } : {}) }
+    : undefined
+  writeAtomic(join(dir, `${key}.json`), JSON.stringify(identity !== undefined ? { result: r, identity } : { result: r }))
   prune(dir, { max: MAX_CACHE_ENTRIES, deadlineMs: deadlineMin * 60_000, keep: FINGERPRINT_FILE })
 }
 
