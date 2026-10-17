@@ -32,7 +32,7 @@ a subagent is about to start (Agent tool, a workflow's agent(), a plugin)
 
 - **`agent_router: true`** in `/plugin` (default `false`). It is independent of
   `effort_router`: either can be on alone.
-- **Function hooks turned on** (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, as for the
+- **Function hooks turned on** (on by default since Claude Code 2.1.287, as for the
   effort router) and **Claude Code 2.1.294 or later**: the first release whose
   `agent.spawn` hook can set a subagent's model and that knows `claude-haiku-5-5`.
   Function hooks are early access: the API can change between releases

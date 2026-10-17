@@ -32,10 +32,9 @@ you press Enter
 - **`effort_router: true`** in `/plugin` (default `false`). Claude Code hands the
   options to the module when it loads it, and reloads it when they change, so with the
   option off the module registers no hook at all and no prompt pays for it.
-- **Function hooks turned on**: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in Claude Code's
-  environment (exported before you start `claude`, or in the `env` block of your
-  settings), unless your account already has them through Claude Code's own rollout.
-  They never load under `--bare`, `disableAllHooks` or `allowManagedHooksOnly`.
+- **Function hooks turned on**: on by default since Claude Code 2.1.287, which also
+  ignores `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS`; before that release the variable had to
+  be `1` in Claude Code's environment. They never load under `--bare`, `disableAllHooks` or `allowManagedHooksOnly`.
   Function hooks are early access: their API can change between Claude Code releases
   without notice; the router was written against 2.1.283 and checked live on 2.1.283
   and 2.1.284 ([Limitations](limitations.md)).

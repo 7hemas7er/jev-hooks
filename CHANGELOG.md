@@ -5,6 +5,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- Docs and option descriptions no longer ask for `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`:
+  function hooks are on by default since Claude Code 2.1.287, which ignores the variable.
+
 ## 0.23.1 — 2026-10-13
 
 The log names the backend the same way on a cached review.

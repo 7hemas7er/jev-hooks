@@ -10,7 +10,8 @@
 //   names the module only.
 // The copy holds .claude-plugin/, hooks/hooks.json, hooks/register.ts, src/core/ and
 // tests-cc/, under the system's temporary directory, and is removed at the end.
-// Function hooks are early access, so the child gets CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1.
+// Function hooks are on by default since Claude Code 2.1.287; the child still gets
+// CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 for earlier releases, which needed it (later ones ignore it).
 // A local check, not a CI one: without the claude CLI it says so and exits 0.
 //
 // Usage: node scripts/test-cc.ts   (exit code of `claude plugin test`)

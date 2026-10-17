@@ -53,8 +53,9 @@ They apply to every TypeScript file, and the tests enforce them.
    types that `hooks/register.ts` imports come from `/plugin-types`, written into
    `.claude/types/` (ignored by git): the declaration is large and trips the reviewer's
    own detectors, so it is never committed. `/plugin-types` appears only while
-   function hooks are enabled, and runs headless without a model:
-   `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "/plugin-types .claude/types"`.
+   function hooks are enabled (on by default since Claude Code 2.1.287; before that
+   release `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, which 2.1.287 and later ignore) and
+   runs headless without a model: `claude -p "/plugin-types .claude/types"`.
    Up to 2.1.284 it needs no credentials either; later releases answer "Not logged
    in" without a login. The push CI type-checks only the core, with
    `tsconfig.core.json`; the weekly compat job generates the declarations and checks
@@ -104,7 +105,7 @@ claude plugin validate .                  # marketplace
 claude plugin validate .claude-plugin/plugin.json   # also lists what hooks/register.ts hooks, calls and reads
 node scripts/test-cc.ts                   # optional, needs the claude CLI: tests-cc/ in Claude Code's test kit
 npx --yes -p typescript@7.0.2 tsc -p tsconfig.core.json   # optional: the core's types
-CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude -p "/plugin-types .claude/types"
+claude -p "/plugin-types .claude/types"   # before 2.1.287: with CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1
 npx --yes -p typescript@7.0.2 tsc -p tsconfig.json        # optional: the core and hooks/register.ts
 ```
 
