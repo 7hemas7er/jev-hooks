@@ -326,11 +326,15 @@ export const register: Register = (on, options) => {
       return r
     })
     // After the call: the commit hook has written its review to the log by then.
+    // The .catch: a hook that fails (a throw, its budget) is skipped by the engine and
+    // the call runs all the same; the handler says so where `claude plugin validate`
+    // lists the gating hooks, and next(e) replays the call's answer, which the hook had
+    // by then.
     on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
       const ran = await next(e)
       if (mayCommit(e.command)) await lineAfterCommit($, ui)
       return ran
-    })
+    }).catch(($, e, next) => next(e))
   }
   // One turn.start for both (the scanner takes one registration per event). The router:
   // binding by text, the classification applies only to the turn its own prompt
@@ -532,6 +536,21 @@ export const register: Register = (on, options) => {
         // the count is the only thing lost
       }
       return r
+    }).catch(($, e, next) => {
+      // The engine would skip the failed hook and start the subagent all the same: this
+      // does the same (next(e) replays the hook's own call when it had made one) and
+      // says so in the debug log, except on a re-entry, where $ calls reject. The kind
+      // is widened: 2.1.284's declarations, which the compat job checks against, lack
+      // 're-entry', and tsc would call the comparison impossible.
+      const kind: string = next.error.kind
+      if (kind !== 're-entry') {
+        try {
+          $.ui.log(`[jev-hooks] agents: hook failed (${kind}), subagent left as is`, { to: 'debug' })
+        } catch {
+          // not even the line could be written: the spawn goes on all the same
+        }
+      }
+      return next(e)
     })
   }
 
@@ -722,6 +741,20 @@ export const register: Register = (on, options) => {
     // dropped beneath (guardrail's block, another plugin's refusal): no turn will start
     if (r.drop !== undefined) pending = without(e.text)
     return r
+  }).catch(($, e, next) => {
+    // The engine would skip the failed hook and let the prompt through all the same:
+    // this does the same (next(e) replays the hook's own call when it had made one) and
+    // says so in the debug log, except on a re-entry, where $ calls reject (the kind is
+    // widened as in agent.spawn's handler).
+    const kind: string = next.error.kind
+    if (kind !== 're-entry') {
+      try {
+        $.ui.log(`[jev-hooks] router: hook failed (${kind}), turn left as is`, { to: 'debug' })
+      } catch {
+        // not even the line could be written: the prompt goes on all the same
+      }
+    }
+    return next(e)
   })
 
   on('turn.step', async function* ($, e, next) {

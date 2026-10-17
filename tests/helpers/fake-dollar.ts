@@ -96,7 +96,9 @@ export interface WorldOptions {
 }
 
 type Hook = (...a: unknown[]) => unknown
-type Register = (on: (event: string, a: Hook | Record<string, unknown>, b?: Hook) => void, options: Record<string, unknown>) => unknown
+// on() answers a registration whose .catch takes the handler the engine asks when the
+// hook fails (Registration in claude-code.d.ts).
+type Register = (on: (event: string, a: Hook | Record<string, unknown>, b?: Hook) => { catch: (handler: Hook) => void }, options: Record<string, unknown>) => unknown
 
 type Queued = { kind: 'answer'; a: HttpAnswer } | { kind: 'fail'; err: Error } | { kind: 'hold'; p: Promise<HttpResponse> }
 
@@ -253,11 +255,14 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   }
 
   const registered: string[] = []
+  // the .catch handlers, by event
+  const caught: Record<string, Hook> = Object.create(null)
   // on(event, hook) or on(event, matcher, hook): a test drives tool.call with the tool
   // its matcher names (the only matcher register.ts uses).
   register((event, a, b) => {
     registered.push(event)
     hooks[event] = (typeof a === 'function' ? a : b) as Hook
+    return { catch: (handler: Hook) => { caught[event] = handler } }
   }, Object.freeze({ ...o.options }))
 
   const signalOf = (s?: AbortSignal): AbortSignal => s ?? new AbortController().signal
@@ -269,7 +274,7 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
   }
 
   return {
-    hooks, env, files, unreadable, denied, broken, calls, envReads, fetches, logs, status, beneath, entered, timers, registered, spawned,
+    hooks, caught, env, files, unreadable, denied, broken, calls, envReads, fetches, logs, status, beneath, entered, timers, registered, spawned,
     get now(): number { return w.clock },
     setRepo(root: string | null): void { w.repoRoot = root },
     setCwd(cwd: string): void { w.cwd = cwd },
@@ -374,6 +379,8 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
     lastEffort(): Effort | number | undefined {
       return beneath.length === 0 ? undefined : beneath[beneath.length - 1].effort
     },
+    // The $ a hook of the event gets, for driving a .catch handler by hand.
+    dollarFor(event: string): unknown { return dollar(event) },
     transcript(): string[] { return logs.filter((l) => l.to === 'transcript').map((l) => l.text) },
     debug(): string[] { return logs.filter((l) => l.to === 'debug').map((l) => l.text) },
   }

@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { register } from '../../hooks/register.ts'
 import { PROMPT_ORIGIN_KINDS } from '../../src/core/types.ts'
-import { fakeClaude, hooksError } from '../helpers/fake-dollar.ts'
+import { DEFAULT_MODEL, fakeClaude, hooksError } from '../helpers/fake-dollar.ts'
 import type { Effort, FakeClaude, HttpAnswer, PromptInput, Usage, WorldOptions } from '../helpers/fake-dollar.ts'
 import { RE_MARKER, generator, highEntropyValue, phrasesForClaude } from '../helpers/fake-secrets.ts'
 
@@ -1346,4 +1346,44 @@ test('status line: JEV_HOOKS_DISABLE=1 clears it at the next update and keeps it
   const off = lineWorld({ env: { JEV_HOOKS_DISABLE: '1' } })
   await off.sessionStart()
   assert.deepEqual(off.status, [])
+})
+
+// The .catch handlers (Registration in claude-code.d.ts): the engine asks one when its
+// hook threw, overran its budget or was not run (re-entry). Each leaves the action as
+// it is, as the engine would have without it, and says so in the debug log.
+test('a gating hook that fails is answered by its .catch: the action goes on as it is, next replayed when the hook had called it', async () => {
+  // the handler's next: it carries the failure and whether the hook had called it
+  const failed = (kind: string, called: boolean, answer: unknown, seen: unknown[]) =>
+    Object.assign(async (x: unknown): Promise<unknown> => { seen.push(x); return answer }, { signal: new AbortController().signal, error: { kind, budget: 1000 }, called })
+  const w = lineWorld({ router: true, options: { agent_router: true } })
+  assert.deepEqual(Object.keys(w.caught).sort(), ['agent.spawn', 'prompt.submit', 'tool.call'])
+  assert.deepEqual(Object.keys(world().caught), ['prompt.submit'])
+
+  const prompt = Object.freeze({ text: 'rename x to y', wait: false, origin: { kind: 'composer' } })
+  for (const [kind, called] of [['throw', false], ['timeout', true]] as const) {
+    const seen: unknown[] = []
+    const r = await w.caught['prompt.submit'](w.dollarFor('prompt.submit'), prompt, failed(kind, called, { text: prompt.text }, seen))
+    assert.deepEqual(r, { text: prompt.text })
+    assert.deepEqual(seen, [prompt])
+    assert.ok(w.debug().includes(`[jev-hooks] router: hook failed (${kind}), turn left as is`), kind)
+  }
+  const spawn = Object.freeze({ subagentType: 'general-purpose', parentModel: DEFAULT_MODEL, fork: false })
+  const seenSpawn: unknown[] = []
+  const started = await w.caught['agent.spawn'](w.dollarFor('agent.spawn'), spawn, failed('throw', false, { model: DEFAULT_MODEL }, seenSpawn))
+  assert.deepEqual(started, { model: DEFAULT_MODEL })
+  assert.deepEqual(seenSpawn, [spawn])
+  assert.ok(w.debug().includes('[jev-hooks] agents: hook failed (throw), subagent left as is'))
+  const call = Object.freeze({ tool: 'Bash', command: 'git commit -m x' })
+  const seenCall: unknown[] = []
+  const ran = await w.caught['tool.call'](w.dollarFor('tool.call'), call, failed('timeout', true, { result: { stdout: '' } }, seenCall))
+  assert.deepEqual(ran, { result: { stdout: '' } })
+  assert.deepEqual(seenCall, [call])
+
+  // a re-entry: the hook's $ calls reject there, so the handler writes nothing
+  const before = w.logs.length
+  const seenAgain: unknown[] = []
+  await w.caught['prompt.submit'](w.dollarFor('prompt.submit'), prompt, failed('re-entry', false, { text: prompt.text }, seenAgain))
+  assert.deepEqual(seenAgain, [prompt])
+  assert.equal(w.logs.length, before)
+  assert.deepEqual(w.transcript(), [])
 })

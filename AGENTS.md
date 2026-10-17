@@ -66,7 +66,10 @@ They apply to every TypeScript file, and the tests enforce them.
 `claude plugin validate .claude-plugin/plugin.json` applies: `$` is never passed to an
 imported function or bound to a name, every call is spelled `$.noun.method(...)`,
 `$.env.get` takes a literal name, and nothing is imported from a `.json`. Its header
-says why; the logic stays in `src/core/router.ts`, where the tests reach it.
+says why; the logic stays in `src/core/router.ts`, where the tests reach it. Each gating
+hook (`tool.call`, `agent.spawn`, `prompt.submit`) carries a `.catch` that lets the
+action through: the same command lists them "with .catch", and the plugin fails open
+by design.
 
 No code holds thresholds, check ids or question texts: they live in
 `config/*.json`. Behaviour changes by opening a JSON, never by touching the code.

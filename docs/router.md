@@ -150,7 +150,10 @@ overwrites an effort that someone else changed during the turn.
   gives `request failed`, followed at most by a fixed reason: `(network disabled by
   policy)`, `(nonessential traffic disabled)`, or the error code Claude Code reports,
   such as `(ConnectionRefused)`. The error's own text never reaches the line: after a
-  redirect it quotes an address the backend chose.
+  redirect it quotes an address the backend chose. Should the hook itself fail (a
+  throw, its 10 s budget), Claude Code skips it and asks its `.catch` handler, which
+  lets the prompt through and writes `hook failed (timeout), turn left as is` to the
+  debug log; the subagent router's `agent.spawn` hook has the same.
 - **Nothing sent without the mask map.** Towards a non-local backend, a guardrail mask
   map that exists but cannot be read or parsed, or one that cannot even be looked for
   (neither `HOME` nor `GUARDRAIL_MASK_MAP` is set), stops every request: the turn stays

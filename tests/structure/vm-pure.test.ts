@@ -629,7 +629,7 @@ test('hooks/register.ts in the vm context: prompt.submit reaches the fetch, turn
       },
     }
     const signal = { aborted: false }
-    register((event, hook) => { hooks[event] = hook }, options)
+    register((event, hook) => { hooks[event] = hook; return { catch() {} } }, options)
     const startNext = Object.assign(async (e) => ({ turnId: e.turnId }), { signal })
     const submitNext = Object.assign(async (e) => {
       await hooks['turn.start']($, Object.freeze({ text: e.text, turnId: 't1' }), startNext)

@@ -9,6 +9,11 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 - Docs and option descriptions no longer ask for `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`:
   function hooks are on by default since Claude Code 2.1.287, which ignores the variable.
+- The three gating hooks (`tool.call`, `agent.spawn`, `prompt.submit`) carry a `.catch`
+  handler: a hook that throws or overruns its budget was already skipped by Claude Code,
+  with the action going on; the handler does the same on purpose, writes
+  `hook failed (<kind>), … left as is` to the debug log, and `claude plugin validate`
+  lists the hooks as "gating hook with .catch".
 
 ## 0.23.1 — 2026-10-13
 
