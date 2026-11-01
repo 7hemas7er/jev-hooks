@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.24.0 — 2026-11-01
+
+The subagent router sees what a workflow agent was asked to do.
+
 ### Fixed
 
 - The subagent router could not see what a workflow agent was asked to do when the
