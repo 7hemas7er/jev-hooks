@@ -578,6 +578,30 @@ small 0. Measured with the shipped agents.json on 2026-10-09: agent_task 24/31 r
 the 31 tasks, about 28% of their subagents' cache-read tokens, and one wrongly (a
 dataset writer read as `label` at 0.65, 0.3% of the tokens).
 
+### Real workflow prompts with a shared context block (kept outside the repo)
+
+88 workflow agents of 11 runs from another repository's session (2026-10-30 to
+2026-11-01), private like the ones above: only counts are published. Two independent
+Opus agents labelled them with the definitions above: `agent_task` agreed on 85 of 88
+(a third agent decided the 3 others), `tier` on 76 (the 12 others are `null`). Kinds:
+implement 42, review 15, check_claim 12, design 10, summarize 3, label 2, debug 2,
+extract 1, research 1. Ten of the 11 runs open all their agents' prompts with the same
+context block, 1,800 to 7,300 characters long (`prompt_head_chars` is 3,000).
+
+Measured on 2026-11-01 with `measure-agents.ts`, rows in spawn order with their `run`,
+towards a local backend:
+
+| | agent_task right | moved | wrongly moved |
+|---|--:|--:|--:|
+| as 0.23.1 sends them | 53/88 (60%) | 1 | 0 |
+| shared head left out (`workflow_shared_prefix_min_chars` 400) | 65/88 (74%) | 3 | 0 |
+
+The three moved are claim checks; the check_claim row of the table goes from 0 of 12
+right to 5. With the harness's own wrapper in front of each prompt (in case the hook
+sees it), 56/88 and 0 moved before, 64/88 and 5 moved after, none wrongly. The rows
+without `run` (all of `agents-dev.jsonl`) are sent as before, so that measurement
+stands.
+
 ### Why Haiku 5.5 for check_claim and label
 
 The route was chosen on what each model did, not on the prior: on 2026-10-08 the same

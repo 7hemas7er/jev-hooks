@@ -135,14 +135,99 @@ export function agentRequest(cfg: AgentsConfig, prompt: string, b: RouterBackend
 export function chooseModel(c: Classification | null, s: AgentSpawn, cfg: AgentsConfig): ModelChoice {
   if (!cfg.enabled) return { reason: 'subagent router off' }
   if (!isObject(c) || typeof c.taskKind !== 'string' || typeof c.pTask !== 'number') return { reason: 'no classification' }
-  const task = `${c.taskKind} ${formatNumber(c.pTask)}`
-  if (!(c.pTask >= cfg.min_top_probability)) return { reason: `left as is (${task} < ${formatNumber(cfg.min_top_probability)})` }
-  const target = Object.hasOwn(cfg.route, c.taskKind) ? cfg.route[c.taskKind] : undefined
-  if (target === undefined) return { reason: `left as is (${task})` }
+  const kind = c.taskKind
+  const task = `${kind} ${formatNumber(c.pTask)}`
+  if (!(c.pTask >= cfg.min_top_probability)) return { reason: `left as is (${task} < ${formatNumber(cfg.min_top_probability)})`, task: kind }
+  const target = Object.hasOwn(cfg.route, kind) ? cfg.route[kind] : undefined
+  if (target === undefined) return { reason: `left as is (${task})`, task: kind }
   if (isObject(s) && typeof s.parentModel === 'string' && s.parentModel.toLowerCase().includes(target.toLowerCase())) {
-    return { reason: `left as is (${task}: already ${target})` }
+    return { reason: `left as is (${task}: already ${target})`, task: kind }
   }
-  return { model: target, reason: `${task} → ${target}` }
+  return { model: target, reason: `${task} → ${target}`, task: kind }
+}
+
+// How long a spawn waits for its answer: a workflow agent runs for minutes and was
+// started by a script, nobody watches it start, so it may wait longer.
+export function agentTimeoutMs(cfg: AgentsConfig, s: AgentSpawn): number {
+  return isObject(s) && s.workflow === true && typeof cfg.workflow_timeout_ms === 'number' ? cfg.workflow_timeout_ms : cfg.timeout_ms
+}
+
+// The run a workflow agent belongs to ('' for any other spawn). Read from the event's
+// own field, typed unknown: the declarations before 2.1.294 lack it.
+export function workflowRunId(workflow: unknown): string {
+  if (!isObject(workflow) || typeof workflow.runId !== 'string') return ''
+  return workflow.runId.slice(0, 200)
+}
+
+// The part of a workflow agent's task prompt that is its own. Scripts often open every
+// agent's prompt with the same context block (the repository, its rules, the plan);
+// clipped to prompt_max_chars, such a prompt shows the backend that block and its
+// tail, and every agent of the run looks the same (measured 2026-11-01 on 88 real
+// workflow prompts: almost all read as implement). The longest head shared with an
+// earlier prompt of the same run is dropped, from a line start, when it is at least
+// minChars long and something is left after it; otherwise the prompt is unchanged.
+export function ownTask(text: string, earlier: readonly string[], minChars: number | undefined): { text: string; shared: number } {
+  if (typeof text !== 'string') return { text: '', shared: 0 }
+  if (typeof minChars !== 'number' || !(minChars > 0) || !Array.isArray(earlier)) return { text, shared: 0 }
+  let longest = 0
+  for (const e of earlier) {
+    if (typeof e !== 'string') continue
+    const n = Math.min(e.length, text.length)
+    let i = 0
+    while (i < n && e.charCodeAt(i) === text.charCodeAt(i)) i++
+    if (i > longest) longest = i
+  }
+  if (longest < minChars) return { text, shared: 0 }
+  // back to the start of the line the shared head ends in: a line half shared is the
+  // agent's own
+  const cut = text.lastIndexOf('\n', longest - 1) + 1
+  if (cut < minChars) return { text, shared: 0 }
+  const rest = text.slice(cut)
+  if (rest.trim() === '') return { text, shared: 0 }
+  return { text: rest, shared: cut }
+}
+
+// What the router did since the last summary line: spawns looked at, moved per model,
+// left as is per task kind, and those without an answer (timeout, busy, error).
+export interface AgentsTally { looked: number; moved: Record<string, number>; left: Record<string, number>; unanswered: number }
+
+// Null-prototype records: an option or a model named like an Object property
+// (constructor, __proto__) is counted as any other.
+export function emptyTally(): AgentsTally {
+  return { looked: 0, moved: Object.create(null) as Record<string, number>, left: Object.create(null) as Record<string, number>, unanswered: 0 }
+}
+
+function bump(r: Record<string, number>, k: string): void {
+  r[k] = (Object.hasOwn(r, k) ? r[k] : 0) + 1
+}
+
+export function tallyChoice(t: AgentsTally, choice: ModelChoice | null): void {
+  if (!isObject(t)) return
+  t.looked++
+  if (!isObject(choice) || typeof choice.task !== 'string') {
+    t.unanswered++
+    return
+  }
+  if (typeof choice.model === 'string') bump(t.moved, choice.model)
+  else bump(t.left, choice.task)
+}
+
+// One transcript line for a tally, or null when no spawn was looked at. Successful
+// decisions go to the debug log one by one (spawns come by the dozen): without this
+// line a router that works and one that never answers look the same.
+export function tallyLine(t: AgentsTally): string | null {
+  if (!isObject(t) || !(t.looked > 0)) return null
+  const n = (x: number): string => formatNumber(x, 0)
+  const sorted = (r: Record<string, number>): [string, number][] => Object.entries(r).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+  const moved = sorted(t.moved)
+  const total = moved.reduce((a, [, v]) => a + v, 0)
+  const parts = [moved.length === 0
+    ? `0 of ${n(t.looked)} subagents moved`
+    : `${n(total)} of ${n(t.looked)} subagents moved (${moved.map(([k, v]) => `${n(v)} to ${k.replace(/^claude-/, '')}`).join(', ')})`]
+  const left = sorted(t.left)
+  if (left.length > 0) parts.push(`left as is: ${left.map(([k, v]) => `${k} ${n(v)}`).join(', ')}`)
+  if (t.unanswered > 0) parts.push(`no answer ${n(t.unanswered)}`)
+  return `[jev-hooks] agents: ${parts.join('; ')}`
 }
 
 // The debug line of a decision: the reason and what kind of spawn it was.

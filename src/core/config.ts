@@ -2210,7 +2210,7 @@ export function composeConfig(layers: ConfigLayers): Result<ComposedConfig> {
 // ═══ agents.json ═══
 
 const AGENTS_FIELDS = [
-  'version', 'enabled', 'timeout_ms', 'max_in_flight', 'prompt_max_chars', 'prompt_head_chars', 'from_models',
+  'version', 'enabled', 'timeout_ms', 'workflow_timeout_ms', 'workflow_shared_prefix_min_chars', 'max_in_flight', 'prompt_max_chars', 'prompt_head_chars', 'from_models',
   'respect_explicit_model', 'skip_types', 'workflow_agents', 'min_top_probability', 'route', 'questions',
 ] as const
 // A model id or an alias as the Agent tool takes it (claude-haiku-5-5, haiku): no
@@ -2230,6 +2230,12 @@ export function validateAgents(json: unknown, calibration: Calibration, file: st
   const enabled = readBoolean(l, r('enabled'), p('enabled'))
   // the spawn waits for the answer: the same bounds as the router's race
   const timeout = readNumber(l, r('timeout_ms'), p('timeout_ms'), { integer: true, min: 50, max: 30_000 })
+  // both optional: a user's agents.json written before them stays valid, and absent
+  // means what the router did before them
+  const wfTimeout = o.workflow_timeout_ms === undefined ? undefined
+    : readNumber(l, o.workflow_timeout_ms, p('workflow_timeout_ms'), { integer: true, min: 50, max: 30_000 })
+  const sharedMin = o.workflow_shared_prefix_min_chars === undefined ? undefined
+    : readNumber(l, o.workflow_shared_prefix_min_chars, p('workflow_shared_prefix_min_chars'), { integer: true, min: 1, max: 100_000 })
   const inFlight = readNumber(l, r('max_in_flight'), p('max_in_flight'), { integer: true, min: 1, max: 16 })
   const maxChars = readNumber(l, r('prompt_max_chars'), p('prompt_max_chars'), { integer: true, min: 1, max: 100_000 })
   const headChars = readNumber(l, r('prompt_head_chars'), p('prompt_head_chars'), { integer: true, min: 0, max: 100_000 })
@@ -2278,7 +2284,10 @@ export function validateAgents(json: unknown, calibration: Calibration, file: st
     return readResult<AgentsConfig>(l, undefined, 'agents.json')
   }
   return readResult<AgentsConfig>(l, {
-    enabled, timeout_ms: timeout, max_in_flight: inFlight, prompt_max_chars: maxChars, prompt_head_chars: headChars,
+    enabled, timeout_ms: timeout,
+    ...(wfTimeout !== undefined ? { workflow_timeout_ms: wfTimeout } : {}),
+    ...(sharedMin !== undefined ? { workflow_shared_prefix_min_chars: sharedMin } : {}),
+    max_in_flight: inFlight, prompt_max_chars: maxChars, prompt_head_chars: headChars,
     from_models: fromModels, respect_explicit_model: respect, skip_types: skipTypes, workflow_agents: workflow,
     min_top_probability: minTop, route, questions, taskQuestion, calibration, file,
   }, 'agents.json')

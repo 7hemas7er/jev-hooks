@@ -608,6 +608,12 @@ export interface EffortChoice { effort?: Effort; reason: string }
 export interface AgentsConfig {
   enabled: boolean
   timeout_ms: number
+  // a workflow agent's own wait (it runs for minutes, its answer can wait longer);
+  // absent: timeout_ms
+  workflow_timeout_ms?: number
+  // a workflow agent's prompt loses the head it shares with an earlier agent of the
+  // same run when that head is at least this long; absent: never
+  workflow_shared_prefix_min_chars?: number
   max_in_flight: number                 // classifications at once; a spawn beyond them is left as is
   prompt_max_chars: number
   prompt_head_chars: number
@@ -635,7 +641,8 @@ export interface AgentSpawn {
 }
 
 // model only when the subagent moves to another model: absent means leave it alone.
-export interface ModelChoice { model?: string; reason: string }
+// task: the option the backend chose, when there was an answer (for the tally).
+export interface ModelChoice { model?: string; reason: string; task?: string }
 
 // problem: a skip the user must hear about (the guardrail mask map), not one that is
 // part of the design (an origin, a prefix, an empty prompt).

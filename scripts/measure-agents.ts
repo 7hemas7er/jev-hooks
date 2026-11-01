@@ -24,7 +24,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { agentRequest, chooseModel, effectiveAgentsConfig } from '../src/core/agents.ts'
+import { agentRequest, chooseModel, effectiveAgentsConfig, ownTask } from '../src/core/agents.ts'
 import { isObject } from '../src/core/json.ts'
 import { formatNumber } from '../src/core/numbers.ts'
 import { parseClassification } from '../src/core/router.ts'
@@ -50,7 +50,10 @@ const LABELS = ['agent_task', 'tier', 'open_judgement', 'writes_files', 'materia
 const SPAWN: AgentSpawn = { subagentType: 'general-purpose', parentModel: 'claude-opus-5-5', fork: false }
 
 
-export interface AgentRow { id: string; text: string; language: string | null; labels: Record<string, string | number | boolean | null> }
+// run: the workflow run a row's prompt was given in. Rows of the same run, in file
+// order, play the agents a script starts one after the other: each is measured as the
+// hook sends it, without the head it shares with an earlier row of its run (ownTask).
+export interface AgentRow { id: string; text: string; language: string | null; labels: Record<string, string | number | boolean | null>; run?: string }
 
 const RE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/
 
@@ -85,7 +88,8 @@ export function parseAgentsDataset(text: string, file: string, cfg: AgentsConfig
       else if (k === 'tier' && x !== null && (typeof x !== 'string' || !(TIERS as readonly string[]).includes(x))) problems.push(`${where} (${id}): tier must be one of ${TIERS.join(', ')} or null`)
       else labels[k] = x as string | number | boolean | null
     }
-    rows.push({ id, text: v.text, language: typeof v.language === 'string' ? v.language : null, labels })
+    if (v.run !== undefined && (typeof v.run !== 'string' || !RE_ID.test(v.run))) return void problems.push(`${where} (${id}): "run" must be an id`)
+    rows.push({ id, text: v.text, language: typeof v.language === 'string' ? v.language : null, labels, ...(typeof v.run === 'string' ? { run: v.run } : {}) })
   })
   if (problems.length > 0) throw new InputError(problems.slice(0, 20).join('\n'))
   if (rows.length === 0) throw new InputError(`${file}: no rows`)
@@ -141,10 +145,15 @@ export async function measureAgents(o: MeasureOptions): Promise<{ code: number; 
   const raw: RawRow[] = []
   let failures = 0
   let stop: string | undefined
+  const runs = new Map<string, string[]>()
   for (const [i, r] of rows.entries()) {
+    const earlier = r.run !== undefined ? runs.get(r.run) ?? [] : []
+    if (r.run !== undefined) runs.set(r.run, [...earlier, r.text])
+    const own = ownTask(r.text, earlier, cfg.workflow_shared_prefix_min_chars)
     // towards a local backend nothing is masked; a remote one gets no map here: the
-    // dataset is synthetic, and a real prompt is never measured with this script
-    const rq = agentRequest(cfg, r.text, b, { text: null }, 1)
+    // published datasets are synthetic, and real prompts are measured only towards a
+    // local backend
+    const rq = agentRequest(cfg, own.text, b, { text: null }, 1)
     const line: RawRow = { id: r.id, ms: 0, model: b.model, local: b.local }
     if ('skip' in rq) line.error = `not sent: ${rq.skip}`
     else {

@@ -5,6 +5,26 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- The subagent router could not see what a workflow agent was asked to do when the
+  script opened every agent's prompt with the same long context block: clipped, the
+  prompts all looked alike and read as `implement`. A workflow agent's prompt now loses
+  the head it shares with an earlier agent of the same run
+  (`workflow_shared_prefix_min_chars`, 400). On 88 real workflow prompts: right 65 of
+  88 instead of 53, 3 moved instead of 1, none wrongly.
+- A workflow agent waits up to `workflow_timeout_ms` (5000 ms) for its answer instead
+  of `timeout_ms` (1500 ms): agents started together queued on a local backend and got
+  no answer in time.
+
+### Added
+
+- One transcript line at the next turn's start sums up what the subagent router did
+  since the previous one: moved per model, left as is per task kind, without an answer.
+  The decisions themselves still go to the debug log only.
+- `measure-agents.ts` reads an optional `run` per row and measures rows of the same run
+  as the hook sends them.
+
 ### Changed
 
 - Docs and option descriptions no longer ask for `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`:

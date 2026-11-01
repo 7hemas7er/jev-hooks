@@ -56,7 +56,10 @@ import {
 } from '../src/core/router.ts'
 import type { Classification, GuardState, GuardStep, RouterContext, SessionEffort } from '../src/core/router.ts'
 import type { AgentSpawn, AgentsConfig, Effort, Result, RouterBackend, RouterConfig } from '../src/core/types.ts'
-import { AGENTS_FILES, agentLine, agentRequest, agentsStatus, chooseModel, effectiveAgentsConfig, spawnSkip } from '../src/core/agents.ts'
+import {
+  AGENTS_FILES, agentLine, agentRequest, agentsStatus, agentTimeoutMs, chooseModel, effectiveAgentsConfig, emptyTally, ownTask, spawnSkip,
+  tallyChoice, tallyLine, workflowRunId,
+} from '../src/core/agents.ts'
 import { dataFolderOf, joinStatus, lastReview, manifestVersion, mayCommit, newerVersions, statusText, versionFolder } from '../src/core/status-line.ts'
 import type { LastReview } from '../src/core/status-line.ts'
 
@@ -346,6 +349,9 @@ export const register: Register = (on, options) => {
   // is not on the path of every request, so it may await. The status line looks for a
   // newer version after the turn started, so the turn never waits for it. The router's
   // state below is declared only when the router is on: it is read only then.
+  // What the subagent router did since the last turn started: one transcript line at
+  // the next turn.start (a workflow's agents end in a notification that starts one).
+  const tally = emptyTally()
   on('turn.start', async ($, e, next) => {
     const p = !routerOn || e.text === '' ? undefined : pending.find((x) => x.text === e.text)
     if (p) {
@@ -359,6 +365,13 @@ export const register: Register = (on, options) => {
       }
     }
     const r = await next(e)
+    if (agentsOn) {
+      const line = tallyLine(tally)
+      if (line !== null) {
+        Object.assign(tally, emptyTally())
+        $.ui.log(line)
+      }
+    }
     if (lineOn) await lineVersions($, ui)
     return r
   })
@@ -394,6 +407,23 @@ export const register: Register = (on, options) => {
         if (!oldest.done) routed.delete(oldest.value)
       }
     }
+    // The heads of the prompts of the latest workflow runs, for ownTask: a few runs, a
+    // few prompts each, a bounded head of each (the shared block is a few thousand
+    // characters).
+    const KEPT_RUNS = 8
+    const KEPT_PROMPTS = 16
+    const KEPT_CHARS = 32_000
+    const runs = new Map<string, string[]>()
+    const earlierOf = (runId: string, prompt: string): string[] => {
+      const before = runs.get(runId) ?? []
+      runs.delete(runId)
+      runs.set(runId, [...before.slice(-(KEPT_PROMPTS - 1)), prompt.slice(0, KEPT_CHARS)])
+      if (runs.size > KEPT_RUNS) {
+        const oldest = runs.keys().next()
+        if (!oldest.done) runs.delete(oldest.value)
+      }
+      return before
+    }
     const agentsSink = (line: string): 'transcript' | 'debug' => {
       if (line === agentsProblem) return 'debug'
       agentsProblem = line
@@ -414,6 +444,11 @@ export const register: Register = (on, options) => {
         ...('workflow' in e && e.workflow !== undefined ? { workflow: true } : {}),
       }
       let key = ''
+      // Taken before any await: agents a script starts together compare with each other.
+      const runId = s.workflow === true ? workflowRunId('workflow' in e ? e.workflow : undefined) : ''
+      const earlier = runId !== '' && typeof e.prompt === 'string' ? earlierOf(runId, e.prompt) : []
+      // what this spawn adds to the tally: a choice, null without an answer
+      let decided: { choice: ReturnType<typeof chooseModel> | null } | undefined
       // Every return leaves the spawn as it is: the single next(arg) is below.
       const decide = async (): Promise<void> => {
         if ((await $.env.get('JEV_HOOKS_AGENTS')) === '0' || (await $.env.get('JEV_HOOKS_DISABLE')) === '1') return
@@ -441,6 +476,7 @@ export const register: Register = (on, options) => {
         }
         seen++
         counted = true
+        decided = { choice: null }
         if (agentsInFlight >= c.max_in_flight) {
           $.ui.log('[jev-hooks] agents: backend busy, left as is', { to: 'debug' })
           return
@@ -463,15 +499,19 @@ export const register: Register = (on, options) => {
           key = b.value.key
           const maskFile = await maskFileFor($, f.home, b.value.local)
           const t0 = await $.clock.now()
-          const prep = agentRequest(c, e.prompt, b.value, maskFile, t0)
+          const own = ownTask(e.prompt, earlier, c.workflow_shared_prefix_min_chars)
+          if (own.shared > 0) $.ui.log(`[jev-hooks] agents: ${formatNumber(own.shared, 0)} characters shared with an earlier agent of the run left out`, { to: 'debug' })
+          const prep = agentRequest(c, own.text, b.value, maskFile, t0)
           if ('skip' in prep) {
             if (prep.problem) $.ui.log(`[jev-hooks] agents: ${prep.skip}`, { to: agentsSink(prep.skip) })
             else $.ui.log(`[jev-hooks] agents: left as is (${prep.skip})`, { to: 'debug' })
           } else {
             // the race, as the effort router's: the answer, or null after timeout_ms
+            // (workflow_timeout_ms for a workflow agent)
+            const wait = agentTimeoutMs(c, s)
             const timer: { h?: { cancel(): void } } = {}
             const timeout = new Promise<null>((resolve) => {
-              timer.h = $.clock.after(c.timeout_ms, () => resolve(null))
+              timer.h = $.clock.after(wait, () => resolve(null))
             })
             const request = $.http.fetch(prep.url, prep.init).finally(release)
             sent = true
@@ -483,7 +523,7 @@ export const register: Register = (on, options) => {
             }
             const ms = (await $.clock.now()) - t0
             if (res === null) {
-              const line = `no answer in ${formatNumber(c.timeout_ms, 0)} ms, subagent left as is`
+              const line = `no answer in ${formatNumber(wait, 0)} ms, subagent left as is`
               $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
             } else {
               const parsed = parseClassification(c, b.value, res.status, res.text)
@@ -493,6 +533,7 @@ export const register: Register = (on, options) => {
               } else {
                 agentsProblem = ''
                 const choice = chooseModel(parsed.value, s, c)
+                decided = { choice }
                 $.ui.log(agentLine(choice, s, ms), { to: 'debug' })
                 if (choice.model !== undefined) {
                   if (s.workflow === true) later = choice.model
@@ -510,6 +551,7 @@ export const register: Register = (on, options) => {
       } catch (err) {
         arg = e
         later = undefined
+        if (decided !== undefined) decided = { choice: null }
         // after an interrupt the engine rejects the spawn's calls: nothing to say then
         if (!next.signal.aborted) {
           try {
@@ -523,6 +565,7 @@ export const register: Register = (on, options) => {
       // outside any try: a refusal beneath is the engine's to report
       const r = await next(arg)
       try {
+        if (decided !== undefined && r.deny === undefined) tallyChoice(tally, decided.choice)
         if (r.deny === undefined) {
           const to = later ?? (arg !== e ? arg.model : undefined)
           if (later !== undefined && r.agentId !== undefined) remember(r.agentId, later)

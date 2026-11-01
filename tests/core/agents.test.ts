@@ -6,7 +6,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AGENTS_FILES, agentLine, agentRequest, agentsStatus, chooseModel, effectiveAgentsConfig, spawnSkip } from '../../src/core/agents.ts'
+import {
+  AGENTS_FILES, agentLine, agentRequest, agentsStatus, agentTimeoutMs, chooseModel, effectiveAgentsConfig, emptyTally, ownTask, spawnSkip, tallyChoice,
+  tallyLine, workflowRunId,
+} from '../../src/core/agents.ts'
 import { agentsRestrictions, validateAgents, validateCalibration } from '../../src/core/config.ts'
 import { parseClassification, routerBackend } from '../../src/core/router.ts'
 import { questionHash } from '../../src/core/systemone.ts'
@@ -175,15 +178,15 @@ test('parseClassification reads the subagent question with the routers calibrati
 })
 
 test('chooseModel: only a routed option at the threshold moves the subagent', () => {
-  assert.deepEqual(chooseModel(classification('check_claim', 0.62), spawn(), CFG), { model: 'claude-haiku-5-5', reason: 'check_claim 0.62 → claude-haiku-5-5' })
+  assert.deepEqual(chooseModel(classification('check_claim', 0.62), spawn(), CFG), { model: 'claude-haiku-5-5', reason: 'check_claim 0.62 → claude-haiku-5-5', task: 'check_claim' })
   assert.deepEqual(chooseModel(classification('label', 0.4), spawn(), CFG).model, 'claude-haiku-5-5')
-  assert.deepEqual(chooseModel(classification('label', 0.39), spawn(), CFG), { reason: 'left as is (label 0.39 < 0.40)' })
-  assert.deepEqual(chooseModel(classification('implement', 0.91), spawn(), CFG), { reason: 'left as is (implement 0.91)' })
+  assert.deepEqual(chooseModel(classification('label', 0.39), spawn(), CFG), { reason: 'left as is (label 0.39 < 0.40)', task: 'label' })
+  assert.deepEqual(chooseModel(classification('implement', 0.91), spawn(), CFG), { reason: 'left as is (implement 0.91)', task: 'implement' })
   assert.deepEqual(chooseModel(classification('check_claim', 0.9), spawn({ parentModel: 'claude-haiku-5-5' }), CFG).model, undefined)
   assert.deepEqual(chooseModel(classification('check_claim', 0.9), spawn(), { ...CFG, enabled: false }), { reason: 'subagent router off' })
   assert.deepEqual(chooseModel(null, spawn(), CFG), { reason: 'no classification' })
   // an option named like an Object property is not a route
-  assert.deepEqual(chooseModel(classification('constructor', 0.9), spawn(), CFG), { reason: 'left as is (constructor 0.90)' })
+  assert.deepEqual(chooseModel(classification('constructor', 0.9), spawn(), CFG), { reason: 'left as is (constructor 0.90)', task: 'constructor' })
 })
 
 test('lines: the decision with the spawn kind, never the prompt; the status counts the moved spawns', () => {
@@ -194,4 +197,59 @@ test('lines: the decision with the spawn kind, never the prompt; the status coun
   assert.equal(agentsStatus(23, { 'claude-haiku-5-5': 9 }), 'jev agents: 9 of 23 on haiku-5-5')
   assert.equal(agentsStatus(5, {}), 'jev agents: 0 of 5 moved')
   assert.equal(agentsStatus(5, { 'claude-haiku-5-5': 1, 'claude-sonnet-5-5': 2 }), 'jev agents: 3 of 5 moved')
+})
+
+// A script's shared context block, then each agent's own task.
+const CONTEXT = Array.from({ length: 30 }, (_, i) => `Rule ${i}: keep the repository's conventions and never touch the live service.`).join('\n') + '\n'
+
+test('ownTask: the head shared with an earlier prompt of the run is left out, from a line start', () => {
+  const verify = `${CONTEXT}YOUR TASK: verify that finding F3 is real and give the evidence.`
+  const build = `${CONTEXT}YOUR TASK: implement the decoder.`
+  assert.deepEqual(ownTask(verify, [build], 400), { text: 'YOUR TASK: verify that finding F3 is real and give the evidence.', shared: CONTEXT.length })
+  // the first agent of a run has nothing to compare with
+  assert.deepEqual(ownTask(verify, [], 400), { text: verify, shared: 0 })
+  // off without the field
+  assert.deepEqual(ownTask(verify, [build], undefined), { text: verify, shared: 0 })
+  // a shared head shorter than the minimum is kept
+  assert.deepEqual(ownTask('Same line\nmine', ['Same line\nyours'], 400), { text: 'Same line\nmine', shared: 0 })
+  // a line half shared belongs to the agent: the cut goes back to its start
+  const a = `${CONTEXT}YOUR TASK: verify F3.`
+  const b = `${CONTEXT}YOUR TASK: verify F4.`
+  assert.equal(ownTask(a, [b], 400).text, 'YOUR TASK: verify F3.')
+  // a prompt entirely shared with an earlier one stays whole
+  assert.deepEqual(ownTask(CONTEXT, [`${CONTEXT}more`], 400), { text: CONTEXT, shared: 0 })
+  // the longest of several earlier prompts counts
+  assert.equal(ownTask(verify, ['unrelated', build], 400).shared, CONTEXT.length)
+  // bad input
+  assert.deepEqual(ownTask(undefined as never, [build], 400), { text: '', shared: 0 })
+  assert.deepEqual(ownTask(verify, null as never, 400), { text: verify, shared: 0 })
+})
+
+test('agentTimeoutMs and workflowRunId: a workflow agent waits workflow_timeout_ms when there is one', () => {
+  assert.equal(agentTimeoutMs({ ...CFG, workflow_timeout_ms: 5000 }, spawn({ workflow: true })), 5000)
+  assert.equal(agentTimeoutMs({ ...CFG, workflow_timeout_ms: 5000 }, spawn()), CFG.timeout_ms)
+  const { workflow_timeout_ms: _, ...without } = CFG
+  assert.equal(agentTimeoutMs(without, spawn({ workflow: true })), CFG.timeout_ms)
+  assert.equal(workflowRunId({ runId: 'wf_abc', agentIndex: 2 }), 'wf_abc')
+  assert.equal(workflowRunId(undefined), '')
+  assert.equal(workflowRunId({ runId: 3 }), '')
+})
+
+test('tally: one line for what the router did, moved per model, left per task kind, the unanswered', () => {
+  const t = emptyTally()
+  assert.equal(tallyLine(t), null)
+  const haiku = chooseModel(classification('check_claim', 0.8), spawn(), CFG)
+  tallyChoice(t, haiku)
+  tallyChoice(t, haiku)
+  for (let i = 0; i < 3; i++) tallyChoice(t, chooseModel(classification('implement', 0.9), spawn(), CFG))
+  tallyChoice(t, chooseModel(classification('review', 0.6), spawn(), CFG))
+  tallyChoice(t, null)
+  assert.equal(tallyLine(t), '[jev-hooks] agents: 2 of 7 subagents moved (2 to haiku-5-5); left as is: implement 3, review 1; no answer 1')
+  const none = emptyTally()
+  tallyChoice(none, chooseModel(classification('implement', 0.9), spawn(), CFG))
+  assert.equal(tallyLine(none), '[jev-hooks] agents: 0 of 1 subagents moved; left as is: implement 1')
+  // an option named like an Object property is counted, never read from the prototype
+  const odd = emptyTally()
+  tallyChoice(odd, chooseModel(classification('constructor', 0.9), spawn(), CFG))
+  assert.equal(tallyLine(odd), '[jev-hooks] agents: 0 of 1 subagents moved; left as is: constructor 1')
 })

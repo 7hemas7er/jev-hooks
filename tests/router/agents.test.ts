@@ -172,7 +172,8 @@ test('max_in_flight: a burst beyond it is left as is without waiting', async () 
   await w.advance(0)
   assert.equal(w.fetches.length, n)
   assert.ok(w.debug().includes('[jev-hooks] agents: backend busy, left as is'))
-  await w.advance(AGENTS.timeout_ms)
+  // workflow agents: they wait workflow_timeout_ms
+  await w.advance(AGENTS.workflow_timeout_ms)
   await Promise.all(all)
 })
 
@@ -184,4 +185,67 @@ test('the status line counts the spawns looked at and the ones moved', async () 
   await w.spawn({ prompt: 'Design the cache layer and compare two approaches.' })
   await w.spawn({ prompt: SKEPTIC, fork: true })
   assert.equal(w.status.at(-1), 'jev agents: 1 of 2 on haiku-5-5')
+})
+
+// A script's shared context block (the repository, its rules), then each agent's task.
+const CONTEXT = Array.from({ length: 40 }, (_, i) => `Rule ${i}: keep the repository's conventions and never touch the live service.`).join('\n') + '\n'
+
+test('a workflow agent is asked about its own task: the head shared with an earlier agent of the run is left out', async () => {
+  const w = world()
+  w.answer(reply('implement'))
+  w.answer(reply('check_claim'))
+  w.answer(reply('check_claim'))
+  await w.spawn({ prompt: `${CONTEXT}Implement the decoder.`, workflow: { runId: 'wf_a', agentIndex: 1 } }, { agentId: 'a1' })
+  await w.spawn({ prompt: `${CONTEXT}Verify that finding F3 is real.`, workflow: { runId: 'wf_a', agentIndex: 2 } }, { agentId: 'a2' })
+  // another run shares nothing with wf_a's prompts as far as the router knows
+  await w.spawn({ prompt: `${CONTEXT}Verify that finding F4 is real.`, workflow: { runId: 'wf_b', agentIndex: 1 } }, { agentId: 'b1' })
+  const states = w.fetches.map((f) => JSON.parse(f.init.body ?? '{}').state as string)
+  assert.ok(states[0].startsWith('Rule 0'))
+  assert.equal(states[1], 'Verify that finding F3 is real.')
+  assert.ok(states[2].startsWith('Rule 0'))
+  assert.ok(w.debug().includes(`[jev-hooks] agents: ${CONTEXT.length} characters shared with an earlier agent of the run left out`))
+  // an Agent tool spawn is never compared
+  const t = world()
+  t.answer(reply('implement'))
+  t.answer(reply('implement'))
+  await t.spawn({ prompt: `${CONTEXT}Implement A.` })
+  await t.spawn({ prompt: `${CONTEXT}Implement B.` })
+  assert.ok(JSON.parse(t.fetches[1].init.body ?? '{}').state.startsWith('Rule 0'))
+})
+
+test('a workflow agent waits workflow_timeout_ms, an Agent tool spawn timeout_ms', async () => {
+  const w = world()
+  w.hold()
+  const pending = w.spawn({ prompt: SKEPTIC, workflow: WORKFLOW }, { agentId: 'a1' })
+  await w.advance(AGENTS.timeout_ms)
+  // still waiting after timeout_ms
+  assert.equal(w.transcript().length, 0)
+  await w.advance(AGENTS.workflow_timeout_ms - AGENTS.timeout_ms)
+  await pending
+  assert.deepEqual(w.transcript(), [`[jev-hooks] agents: no answer in ${AGENTS.workflow_timeout_ms} ms, subagent left as is`])
+})
+
+test('the next turn.start writes one line for what the router did since the last one', async () => {
+  const w = world()
+  w.answer(reply('check_claim'))
+  await w.spawn({ prompt: SKEPTIC, workflow: WORKFLOW }, { agentId: 'a1' })
+  w.answer(reply('implement'))
+  await w.spawn({ prompt: 'Implement the --json flag.', workflow: WORKFLOW }, { agentId: 'a2' })
+  w.hold()
+  const late = w.spawn({ prompt: 'Review the diff.', workflow: WORKFLOW }, { agentId: 'a3' })
+  await w.advance(AGENTS.workflow_timeout_ms)
+  await late
+  // a fork is not looked at: not counted
+  await w.spawn({ prompt: SKEPTIC, fork: true })
+  await w.start('', 'notification-turn')
+  assert.equal(w.transcript().at(-1), '[jev-hooks] agents: 1 of 3 subagents moved (1 to haiku-5-5); left as is: implement 1; no answer 1')
+  const n = w.transcript().length
+  // nothing since: no line
+  await w.start('', 'next-turn')
+  assert.equal(w.transcript().length, n)
+  // a refused spawn is not counted
+  w.answer(reply('check_claim'))
+  await w.spawn({ prompt: SKEPTIC }, { deny: 'refused' })
+  await w.start('', 'third-turn')
+  assert.equal(w.transcript().length, n)
 })

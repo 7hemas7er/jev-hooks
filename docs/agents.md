@@ -86,14 +86,33 @@ API response's model is what counts. `workflow_agents: false` leaves workflow ag
 alone.
 
 A workflow starts many agents at once: `max_in_flight` (4) caps the questions in
-flight, and a spawn beyond it starts as it is rather than wait.
+flight, and a spawn beyond it starts as it is rather than wait. A workflow agent waits
+for its answer up to `workflow_timeout_ms` (5000 ms) instead of `timeout_ms` (1500):
+it runs for minutes and nobody watches it start, while the requests of a burst queue
+on a local backend (on 2026-10-31, four agents started together got no answer in
+1.5 s although one alone is answered in about 0.4 s).
+
+Scripts often open every agent's prompt with the same context block: the repository,
+its rules, the plan. Clipped to `prompt_max_chars`, such a prompt shows the backend
+that block and its tail, and every agent of the run looks the same: on 88 real
+workflow prompts almost all read as `implement`, the claim checks included. So a
+workflow agent's prompt loses the head it shares with an earlier agent of the same
+run, from a line start, when that head is at least
+`workflow_shared_prefix_min_chars` (400) long. The first agent of a run has nothing to
+compare with and is asked about as it is; agents started together compare with each
+other in the order they spawn. Without the field nothing is left out.
 
 ## What you see
 
 - Each decision goes to the debug log (`claude --debug`):
   `[jev-hooks] agents: check_claim 0.62 → claude-haiku-5-5 (workflow agent, 0.41 s)` or
   `… left as is (implement 0.91)`. Subagents come by the dozen, so none of this goes
-  to the transcript.
+  to the transcript one by one.
+- At the next turn's start (a workflow's end starts one with its notification), one
+  transcript line sums up what happened since the last one:
+  `[jev-hooks] agents: 3 of 21 subagents moved (3 to haiku-5-5); left as is: implement
+  15, review 3; no answer 1`. Without it a router that works and one that never gets
+  an answer look the same.
 - A problem (backend unreachable, no answer in time, a mask map that cannot be read)
   goes to the transcript once, `[jev-hooks] agents: no answer in 1500 ms, subagent left
   as is`, and to the debug log only while it repeats.
@@ -142,3 +161,11 @@ and the route moves 15 of them, about 28% of their subagents' cache-read tokens,
 wrongly (a dataset writer read as `label`). The threshold is not fitted, the sample is
 small and from one repository: details in the
 [bench](../bench/README.md#agents-devjsonl-task-prompts-for-the-subagent-router).
+
+On 2026-11-01, 88 real workflow prompts from another repository (11 runs, labelled by
+two independent agents, a third on the 3 disagreements) showed the shared context
+block: the question was right on 53 of 88 and the route moved 1. With the shared head
+left out, 65 of 88 and 3 moved (three claim checks that ran on Opus that night),
+none wrongly. Most of the tasks that could move stay: long prompts whose own part
+still reads as `implement`, and four right answers just under 0.4 (0.38–0.39). The
+threshold stays where it was: one evening's prompts are not enough to fit it.

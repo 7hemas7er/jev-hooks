@@ -138,3 +138,20 @@ test('the command line: help, a missing mode, an unknown option, an invalid tria
   assert.equal(await main(['--replay', join(dir, 'm2'), '--config', f], b.w), 2)
   assert.match(b.err, /invalid/)
 })
+
+test('rows of the same run are sent without the head they share with an earlier row of that run', async () => {
+  const context = Array.from({ length: 20 }, (_, i) => `Shared rule ${i} of the workflow, the same for every agent it starts.`).join('\n') + '\n'
+  const text = [
+    JSON.stringify({ id: 'r1', run: 'wf_x', text: `${context}You build the decoder.`, labels: { agent_task: 'implement' } }),
+    JSON.stringify({ id: 'r2', run: 'wf_x', text: `${context}You are a skeptic: is finding F3 real?`, labels: { agent_task: 'check_claim' } }),
+    JSON.stringify({ id: 'r3', text: `${context}You are a skeptic too, outside any run.`, labels: { agent_task: 'check_claim' } }),
+  ].join('\n') + '\n'
+  const start = fake.requests.length
+  const r = await measureAgents({ out: join(dir, 'm-run'), dataset: datasetFile('d-run.jsonl', text), url: fake.url, date: 'x', timeoutMs: 10_000, overwrite: false, env: { JEV_HOOKS_URL: fake.url, JEV_HOOKS_KEY: KEY } })
+  assert.equal(r.code, 0)
+  const states = fake.requests.slice(start).map((q) => (q.json as { state: string }).state)
+  assert.ok(states[0].startsWith('Shared rule 0'))
+  assert.equal(states[1], 'You are a skeptic: is finding F3 real?')
+  assert.ok(states[2].startsWith('Shared rule 0'))
+  assert.throws(() => parseAgentsDataset(JSON.stringify({ id: 'x', run: 3, text: 't' }) + '\n', 'd', agentsConfig(null, 'plugin')), InputError)
+})
