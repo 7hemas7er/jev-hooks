@@ -394,6 +394,13 @@ export const register: Register = (on, options) => {
     let agentsNotes = ''
     let agentsProblem = ''
     let agentsInFlight = 0
+    // spawns queued for a slot, oldest first: a freed slot passes to the first of them
+    const agentsWaiting: Array<() => void> = []
+    const agentsSlotBack = (): void => {
+      const nextInLine = agentsWaiting.shift()
+      if (nextInLine) nextInLine()
+      else agentsInFlight--
+    }
     // spawns the router looked at (not skipped) and how many moved, per model
     let seen = 0
     const moved: Record<string, number> = {}
@@ -477,17 +484,51 @@ export const register: Register = (on, options) => {
         seen++
         counted = true
         decided = { choice: null }
-        if (agentsInFlight >= c.max_in_flight) {
-          $.ui.log('[jev-hooks] agents: backend busy, left as is', { to: 'debug' })
-          return
+        // The answer is awaited for timeout_ms (workflow_timeout_ms for a workflow agent),
+        // the time spent queued for a slot included.
+        const fullWait = agentTimeoutMs(c, s)
+        let wait = fullWait
+        // A free slot is taken here, before any await, or a burst of spawns would all pass
+        // the check; it is given back when the request settles (a late one keeps it to its
+        // end, so a slow backend gets no more) or at once if none is made. Beyond
+        // max_in_flight a spawn queues for a slot within its wait instead of starting as
+        // it is: on 2026-11-09 bursts of 9, 7 and 4 Agent tool spawns got no answer at all.
+        if (agentsInFlight < c.max_in_flight) agentsInFlight++
+        else {
+          let handOver: (() => void) | undefined
+          const slot = new Promise<boolean>((resolve) => {
+            handOver = () => resolve(true)
+          })
+          if (handOver) agentsWaiting.push(handOver)
+          const timer: { h?: { cancel(): void } } = {}
+          let got = false
+          let done = false
+          try {
+            const queuedAt = await $.clock.now()
+            const late = new Promise<boolean>((resolve) => {
+              timer.h = $.clock.after(wait, () => resolve(false))
+            })
+            got = await Promise.race([slot, late])
+            if (got) wait = fullWait - ((await $.clock.now()) - queuedAt)
+            done = true
+          } finally {
+            timer.h?.cancel()
+            if (!got) {
+              const i = handOver ? agentsWaiting.indexOf(handOver) : -1
+              if (i >= 0) agentsWaiting.splice(i, 1)
+              // handed a slot as the wait ran out: it goes on to the next in line
+              else agentsSlotBack()
+            } else if (!done) agentsSlotBack()
+          }
+          if (!got || wait <= 0) {
+            if (got) agentsSlotBack()
+            $.ui.log('[jev-hooks] agents: backend busy, left as is', { to: 'debug' })
+            return
+          }
         }
-        // The slot is taken here, before the awaits below, or a burst of spawns would all
-        // pass the check; it is given back when the request settles (a late one keeps it
-        // to its end, so a slow backend gets no more) or at once if none is made.
-        agentsInFlight++
         let sent = false
         const release = (): void => {
-          agentsInFlight--
+          agentsSlotBack()
         }
         try {
           const b = await backendFor($, options, f.dir)
@@ -506,9 +547,7 @@ export const register: Register = (on, options) => {
             if (prep.problem) $.ui.log(`[jev-hooks] agents: ${prep.skip}`, { to: agentsSink(prep.skip) })
             else $.ui.log(`[jev-hooks] agents: left as is (${prep.skip})`, { to: 'debug' })
           } else {
-            // the race, as the effort router's: the answer, or null after timeout_ms
-            // (workflow_timeout_ms for a workflow agent)
-            const wait = agentTimeoutMs(c, s)
+            // the race, as the effort router's: the answer, or null when the wait runs out
             const timer: { h?: { cancel(): void } } = {}
             const timeout = new Promise<null>((resolve) => {
               timer.h = $.clock.after(wait, () => resolve(null))
@@ -523,7 +562,7 @@ export const register: Register = (on, options) => {
             }
             const ms = (await $.clock.now()) - t0
             if (res === null) {
-              const line = `no answer in ${formatNumber(wait, 0)} ms, subagent left as is`
+              const line = `no answer in ${formatNumber(fullWait, 0)} ms, subagent left as is`
               $.ui.log(`[jev-hooks] agents: ${line}`, { to: agentsSink(line) })
             } else {
               const parsed = parseClassification(c, b.value, res.status, res.text)

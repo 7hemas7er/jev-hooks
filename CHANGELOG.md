@@ -5,6 +5,17 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- A burst of subagents got no answer from the subagent router: a spawn beyond
+  `max_in_flight` started as it was at once, and the ones in flight gave up after
+  1.5 s while their requests queued on a local backend. On 2026-11-09 one session
+  started Agent tool subagents in bursts of 9, 7, 4 and 2, and none was answered. A
+  spawn beyond `max_in_flight` now queues for a free slot within its own wait, and an
+  Agent tool spawn waits up to `timeout_ms` 4000 ms instead of 1500 (a workflow agent
+  still waits `workflow_timeout_ms`, 5000 ms). The session's turn can wait up to 4 s
+  for a burst.
+
 ## 0.24.1 — 2026-11-13
 
 The subagent router also looks at the subagents of a Claude Fable 5.2 session.

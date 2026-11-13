@@ -164,17 +164,35 @@ test('a non-local backend without a usable mask map is not asked; a refusal bene
   assert.deepEqual(r, { deny: 'refused by another plugin' })
 })
 
-test('max_in_flight: a burst beyond it is left as is without waiting', async () => {
+test('max_in_flight: a spawn beyond it queues for a slot within its wait, then is asked', async () => {
+  const w = world()
+  const n = AGENTS.max_in_flight
+  const held = Array.from({ length: n }, () => w.hold())
+  w.answer(reply('check_claim'))
+  const all = Array.from({ length: n + 1 }, (_, i) => w.spawn({ prompt: `${SKEPTIC} #${i}` }))
+  await w.advance(0)
+  assert.equal(w.fetches.length, n)
+  // one answer frees a slot: the queued spawn takes it and is asked at once
+  held[0].resolve(reply('implement'))
+  await w.advance(100)
+  assert.equal(w.fetches.length, n + 1)
+  await w.advance(AGENTS.timeout_ms)
+  await Promise.all(all)
+  assert.equal(w.spawned.filter((x) => x.model === HAIKU).length, 1)
+  assert.equal(w.debug().includes('[jev-hooks] agents: backend busy, left as is'), false)
+})
+
+test('max_in_flight: a spawn whose wait runs out in the queue is left as is and never asked', async () => {
   const w = world()
   const n = AGENTS.max_in_flight
   for (let i = 0; i < n; i++) w.hold()
-  const all = Array.from({ length: n + 1 }, (_, i) => w.spawn({ prompt: `${SKEPTIC} #${i}`, workflow: WORKFLOW }, { agentId: `a${i}` }))
+  const all = Array.from({ length: n + 1 }, (_, i) => w.spawn({ prompt: `${SKEPTIC} #${i}` }))
   await w.advance(0)
+  await w.advance(AGENTS.timeout_ms)
+  await Promise.all(all)
   assert.equal(w.fetches.length, n)
   assert.ok(w.debug().includes('[jev-hooks] agents: backend busy, left as is'))
-  // workflow agents: they wait workflow_timeout_ms
-  await w.advance(AGENTS.workflow_timeout_ms)
-  await Promise.all(all)
+  assert.equal(w.spawned.some((x) => x.model !== undefined), false)
 })
 
 test('the status line counts the spawns looked at and the ones moved', async () => {

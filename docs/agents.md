@@ -9,10 +9,10 @@ Claude Haiku 5.5; every other subagent runs as its caller decided.
 
 ```
 a subagent is about to start (Agent tool, a workflow's agent(), a plugin)
-        │  agent.spawn: the spawn waits for the answer or timeout_ms (1.5 s)
+        │  agent.spawn: the spawn waits for the answer or timeout_ms (4 s)
         ▼
   not a fork or a teammate, no model named by the caller,
-  parent model in from_models, backend free? ── no ──▶ starts as it is
+  parent model in from_models, a slot free in time? ── no ──▶ starts as it is
         │
         ▼
   POST /v1/systemone ── agent_task, the task prompt as the state
@@ -85,12 +85,17 @@ was built for the parent's model, so it may say it is Opus while Haiku answers; 
 API response's model is what counts. `workflow_agents: false` leaves workflow agents
 alone.
 
-A workflow starts many agents at once: `max_in_flight` (4) caps the questions in
-flight, and a spawn beyond it starts as it is rather than wait. A workflow agent waits
-for its answer up to `workflow_timeout_ms` (5000 ms) instead of `timeout_ms` (1500):
-it runs for minutes and nobody watches it start, while the requests of a burst queue
-on a local backend (on 2026-10-31, four agents started together got no answer in
-1.5 s although one alone is answered in about 0.4 s).
+Spawns often come in bursts: a workflow starts many agents at once, and a session can
+start several Agent tool subagents in one reply. `max_in_flight` (4) caps the
+questions in flight; a spawn beyond it queues for a free slot and is asked when one
+frees, and starts as it is only if its wait runs out first (until 0.24.1 it started as
+it was at once: on 2026-11-09 bursts of 9, 7 and 4 Agent tool spawns got no answer at
+all). The wait counts the time in the queue. A workflow agent waits for its answer up
+to `workflow_timeout_ms` (5000 ms), an Agent tool spawn up to `timeout_ms` (4000 ms,
+1500 until 0.24.1): the requests of a burst queue on a local backend (on 2026-10-31,
+four agents started together got no answer in 1.5 s although one alone is answered in
+about 0.4 s). The Agent tool's wait is shorter because the session's turn waits with
+it, while a workflow agent runs for minutes and nobody watches it start.
 
 Scripts often open every agent's prompt with the same context block: the repository,
 its rules, the plan. Clipped to `prompt_max_chars`, such a prompt shows the backend
@@ -114,7 +119,7 @@ other in the order they spawn. Without the field nothing is left out.
   15, review 3; no answer 1`. Without it a router that works and one that never gets
   an answer look the same.
 - A problem (backend unreachable, no answer in time, a mask map that cannot be read)
-  goes to the transcript once, `[jev-hooks] agents: no answer in 1500 ms, subagent left
+  goes to the transcript once, `[jev-hooks] agents: no answer in 4000 ms, subagent left
   as is`, and to the debug log only while it repeats.
 - With `status_line` on, the line ends with the session's count:
   `jev agents: 9 of 23 on haiku-5-5` (spawns looked at, and how many moved).

@@ -283,7 +283,7 @@ export const DEFAULT_AGENTS = {
   "version": 1,
   "_comment": "Subagent model router (hooks/register.ts, a function hook, early access). Off unless the agent_router option is true. Before a subagent starts, one question about its task prompt; when the answer is an option of route with p >= min_top_probability, the subagent runs on that model, otherwise as its caller decided. Measured on 2026-10-08: Haiku 5.5 matched Opus 5.5 on checking a stated claim (51/52) and on labelling against a written definition (201/208) at about 1/20 of the cost; rizzo read those two kinds on real task prompts well enough at 0.4 (bench/README.md, agents-dev.jsonl). Threshold NOT fitted.",
   "enabled": true,
-  "timeout_ms": 1500,
+  "timeout_ms": 4000,
   "workflow_timeout_ms": 5000,
   "workflow_shared_prefix_min_chars": 400,
   "max_in_flight": 4,
