@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.24.1 — 2026-11-13
+
+The subagent router also looks at the subagents of a Claude Fable 5.2 session.
+
 ### Fixed
 
 - The subagent router left alone every subagent of a Claude Fable 5.2 session:
