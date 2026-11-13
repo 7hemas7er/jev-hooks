@@ -5,6 +5,12 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- The subagent router left alone every subagent of a Claude Fable 5.2 session:
+  `from_models` named `fable-5-1` but not `fable-5-2`. On one machine, 50 workflow agents
+  and 528 general-purpose calls ran on Fable 5.2 in three weeks without a question.
+
 ## 0.24.0 — 2026-11-01
 
 The subagent router sees what a workflow agent was asked to do.

@@ -291,6 +291,7 @@ export const DEFAULT_AGENTS = {
   "prompt_head_chars": 3000,
   "from_models": [
     "opus-5-5",
+    "fable-5-2",
     "fable-5-1",
     "sonnet-5-5"
   ],

@@ -136,6 +136,7 @@ test('spawnSkip: forks, teammates, a named model, skipped types and other parent
   assert.equal(spawnSkip(spawn(), CFG), null)
   assert.equal(spawnSkip(spawn({ workflow: true }), CFG), null)
   assert.equal(spawnSkip(spawn({ parentModel: 'claude-opus-5-5[1m]' }), CFG), null)
+  assert.equal(spawnSkip(spawn({ parentModel: 'claude-fable-5-2' }), CFG), null)
   assert.match(spawnSkip(spawn({ fork: true }), CFG) ?? '', /fork/)
   assert.match(spawnSkip(spawn({ isTeammate: true }), CFG) ?? '', /teammate/)
   assert.match(spawnSkip(spawn({ model: 'sonnet' }), CFG) ?? '', /named a model/)

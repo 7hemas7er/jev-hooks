@@ -70,7 +70,7 @@ Never looked at:
 - **teammates**, which keep the model their team gave them;
 - a spawn whose caller **named a model** (`respect_explicit_model`, true by default):
   a script or a session that chose one had a reason;
-- a parent outside `from_models` (`opus-5-5`, `fable-5-1`, `sonnet-5-5`), and any type
+- a parent outside `from_models` (`opus-5-5`, `fable-5-2`, `fable-5-1`, `sonnet-5-5`), and any type
   in `skip_types`.
 
 ## Workflow agents
