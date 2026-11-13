@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.24.2 — 2026-11-13
+
+A burst of subagents waits for the subagent router instead of going unanswered.
+
 ### Fixed
 
 - A burst of subagents got no answer from the subagent router: a spawn beyond
