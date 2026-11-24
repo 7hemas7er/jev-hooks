@@ -417,6 +417,28 @@ node scripts/measure-questions.ts --dataset bench/holdout-weakens.jsonl \
   --out bench/results/YYYY-MM-DD-holdout-weakens --date YYYY-MM-DD
 ```
 
+## `holdout-2.jsonl`: a second holdout for every question (frozen, measured once)
+
+`holdout.jsonl` has been measured for several models and settings, the last time for
+rizzo-flow's fine-tune (`results/2026-11-24-flow-holdout`), and what it showed there
+shaped the thresholds tried next: it can no longer check them. This set is there to
+check, once, the fine-tune with thresholds of its own chosen on `dev.jsonl` and the
+model in use with the shipped ones.
+
+120 rows (31 Python, 31 PHP, 28 TypeScript, the rest mixed; 104 Italian, 16 English
+commits): 11 to 15 positives and 15 to 18 hard negatives per question, 61/59 for
+`adds_tests`. Four Opus agents wrote and labelled 30 rows each from a brief with the
+row format, the definitions above and the sent question texts, never the other
+datasets, `policy.json` or any result (the context a session loads by itself, this
+repository's instructions and its latest commit subjects, names none of those). Two
+other Opus agents labelled two batches each again from the same brief, with the labels,
+the notes and the ids taken away: 1080 of 1080 labels agree. As for
+`agents-dev.jsonl`, the agreement says that the definitions read one way on these
+rows, not that two independent kinds of reader would agree; and rows on which two
+readers never differ are likely tidier than real commits.
+`node bench/verify.ts bench/holdout-2.jsonl` checks it; the rows must not change after
+the measurement.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of
@@ -512,6 +534,14 @@ labelled on 2026-09-28 by a separate agent that was given only the question crit
 and the effort definitions above, never `router.json`'s rules, the dev set or its
 measurement. It was committed before being measured, and it is measured once to check a
 configuration chosen on the dev set, never to choose one.
+
+`router-holdout-2.jsonl` is a second one, 120 new prompts (60 Italian, 60 English),
+because the first has now been measured for rizzo-flow's fine-tune and its scores on
+risky requests were seen. Two Opus agents wrote and labelled 60 prompts each from the
+same material (question criteria and effort definitions only); another labelled
+them again without seeing the labels, and a third judge decided the 22 labels they
+disagreed on (12 `scope`, 6 `effort`, 3 `task_kind`, 1 `multi_deliverable`; 14 went
+against the writer). It was committed before being measured, and is measured once.
 
 ### Measuring and replaying
 
