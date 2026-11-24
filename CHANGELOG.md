@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.24.3 — 2026-11-24
+
+The subagent router's summary line comes out once per turn of the session.
+
 ### Fixed
 
 - The subagent router's summary line came out once per subagent instead of once per
