@@ -439,6 +439,33 @@ readers never differ are likely tidier than real commits.
 `node bench/verify.ts bench/holdout-2.jsonl` checks it; the rows must not change after
 the measurement.
 
+Measured once on 2026-11-24 (`results/2026-11-24-flow-holdout2` and
+`2026-11-24-base-holdout2`, the shipped wordings). The fine-tune's thresholds had been
+chosen on its dev measurement only, on the calibrated scale, as the highest TPR within
+3% false alarms; the base keeps `policy.json`'s. The criteria were written before the
+set existed: per rule, TPR at least the base's minus one positive and false alarms at
+most the base's plus one; a critical rule that fails means no switch.
+
+| rule | fine-tune, own thresholds | base, shipped | |
+|---|--:|--:|---|
+| hardcoded_secret | 11/12, 3/108 | 5/12, 3/108 | holds |
+| injection_risk | 7/12, 2/108 | 9/12, 6/108 | **fails** (TPR) |
+| weakens_tests | 11/12, 6/108 | 11/12, 2/108 | **fails** (false alarms) |
+| touches_auth | 13/15, 11/105 | 14/15, 10/105 | holds |
+| breaks_api | 8/14, 3/106 | 11/14, 3/106 | fails (TPR) |
+| data_migration | 10/11, 4/109 | 11/11, 4/109 | holds |
+| debug_leftovers | 12/12, 2/108 | 12/12, 6/108 | holds |
+| adds_tests | 41/61, 3/59 | 50/61, 6/59 | fails (TPR) |
+
+Neither model puts a clean diff in BLOCK or SECURITY REVIEW; 14 of 21 clean diffs reach
+MERGE with the fine-tune, 13 with the base. The secrets gain does not reach the verdict:
+with the detectors both stop 11 of 12, the same one missed. By AUROC only
+`hardcoded_secret` moves beyond the noise (0.984 against 0.942, paired bootstrap 95%
++0.004 to +0.101) and `description_matches`, which has no rule, nearly so (0.687 against
+0.426): the two models separate the others alike, and thresholds chosen on 118 diffs of
+`dev.jsonl` do not carry over for either (the base's touches_auth goes from 3 to 10%
+false alarms). The production model stays.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of
@@ -542,6 +569,15 @@ same material (question criteria and effort definitions only); another labelled
 them again without seeing the labels, and a third judge decided the 22 labels they
 disagreed on (12 `scope`, 6 `effort`, 3 `task_kind`, 1 `multi_deliverable`; 14 went
 against the writer). It was committed before being measured, and is measured once.
+
+Measured once on 2026-11-24 (`results/2026-11-24-flow-router-holdout2` and
+`2026-11-24-base-router-holdout2`), the fine-tune with the `risky_irreversible` floor
+lowered to 0.2 (chosen on `router-dev.jsonl` to match the base's false alarms) and the
+base with the shipped 0.5. Risky requests caught: 19 of 20 for both, with 17 and 19
+false alarms in 100. In a session at `high`, of 110 prompts: fine-tune 8 under, 74
+exact, 28 over; base 5 under, 66 exact, 39 over. The criterion written beforehand (under
+no more than the base's) fails by three prompts; paired, the fine-tune adds four and
+removes one, which a set this size cannot tell from chance.
 
 ### Measuring and replaying
 
