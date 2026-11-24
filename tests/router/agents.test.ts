@@ -255,6 +255,9 @@ test('the next turn.start writes one line for what the router did since the last
   await late
   // a fork is not looked at: not counted
   await w.spawn({ prompt: SKEPTIC, fork: true })
+  // a subagent's own turn starting is not the moment: the count waits for the main loop
+  await w.start(SKEPTIC, 'subagent-turn', 'a1')
+  assert.equal(w.transcript().some((l) => l.includes('subagents moved')), false)
   await w.start('', 'notification-turn')
   assert.equal(w.transcript().at(-1), '[jev-hooks] agents: 1 of 3 subagents moved (1 to haiku-5-5); left as is: implement 1; no answer 1')
   const n = w.transcript().length

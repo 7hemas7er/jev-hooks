@@ -5,6 +5,14 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Fixed
+
+- The subagent router's summary line came out once per subagent instead of once per
+  turn of the session: a subagent's own turns start too, and each one printed the
+  count so far. Since Claude Code 2.1.331 `turn.start` names a subagent's turn with
+  `agentId`, and the line now waits for a turn of the main loop. Earlier releases do
+  not name it and print as before.
+
 ## 0.24.2 — 2026-11-13
 
 A burst of subagents waits for the subagent router instead of going unanswered.

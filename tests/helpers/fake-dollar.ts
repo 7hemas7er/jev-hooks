@@ -267,8 +267,8 @@ export function fakeClaude(register: Register, o: WorldOptions = {}) {
 
   const signalOf = (s?: AbortSignal): AbortSignal => s ?? new AbortController().signal
 
-  async function start(text: string, turnId: string): Promise<void> {
-    const e = Object.freeze({ text, turnId })
+  async function start(text: string, turnId: string, agentId?: string): Promise<void> {
+    const e = Object.freeze(agentId === undefined ? { text, turnId } : { text, turnId, agentId })
     const next = Object.assign(async (x: { turnId: string }) => ({ turnId: x.turnId }), { signal: signalOf() })
     if (hooks['turn.start']) await hooks['turn.start'](dollar('turn.start'), e, next)
   }

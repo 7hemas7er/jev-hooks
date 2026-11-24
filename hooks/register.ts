@@ -350,7 +350,10 @@ export const register: Register = (on, options) => {
   // newer version after the turn started, so the turn never waits for it. The router's
   // state below is declared only when the router is on: it is read only then.
   // What the subagent router did since the last turn started: one transcript line at
-  // the next turn.start (a workflow's agents end in a notification that starts one).
+  // the next turn.start of the main loop (a workflow's agents end in a notification that
+  // starts one). A subagent's own turns start too (2.1.331 names them with agentId):
+  // counting at those printed one line per spawn. Read with `in`: older declarations
+  // lack the field, and there every turn prints as before.
   const tally = emptyTally()
   on('turn.start', async ($, e, next) => {
     const p = !routerOn || e.text === '' ? undefined : pending.find((x) => x.text === e.text)
@@ -365,7 +368,8 @@ export const register: Register = (on, options) => {
       }
     }
     const r = await next(e)
-    if (agentsOn) {
+    const mainLoop = !('agentId' in e && typeof e.agentId === 'string' && e.agentId !== '')
+    if (agentsOn && mainLoop) {
       const line = tallyLine(tally)
       if (line !== null) {
         Object.assign(tally, emptyTally())
