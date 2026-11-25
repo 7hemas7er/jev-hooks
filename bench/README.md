@@ -466,6 +466,28 @@ with the detectors both stop 11 of 12, the same one missed. By AUROC only
 `dev.jsonl` do not carry over for either (the base's touches_auth goes from 3 to 10%
 false alarms). The production model stays.
 
+## `holdout-auth.jsonl`: a fresh holdout for touches_auth (frozen, measured once)
+
+On `dev.jsonl`, `holdout.jsonl` and `holdout-2.jsonl` together (359 diffs, all measured
+before) the current text of `touches_auth` raises 18 false alarms in 320 at 0.7, of which
+15 are credentials the application uses to call other services, and misses 9 positives,
+7 of them a route leaving the auth group, a login check removed or a webhook signature
+check suspended: the definition above decides both, the question text does not name them. Four wordings that do were measured on those rows (`variants-auth.json`,
+`results/2026-11-25-auth1-*`). The rule fixed before: the highest TPR with at most 3%
+false alarms, and to go on at least 4 positives more than the current text at the same
+budget and a paired 95% lower bound of the AUROC difference above 0. The choice form,
+`d_choice`, catches 38 of 39 positives with 8 of 320 false alarms (the current text 24
+with 9 at its own best threshold), AUROC 0.996 against 0.968.
+
+Those wordings were written after reading the errors, so this set is there to check
+`d_choice`, threshold 0.278, once. 64 rows labelled for `touches_auth` only: 22 positives,
+42 negatives of which 33 hard, 12 of them credentials towards external services. Two Opus
+agents wrote 32 rows each from the row format and the definition above only (never
+`checks.json`, the variants, the other datasets or any result); a third labelled all 64
+again with the labels, notes and ids taken away: 64 of 64 agree.
+`node bench/verify.ts bench/holdout-auth.jsonl --only touches_auth` checks it; the rows
+must not change after the measurement.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of
