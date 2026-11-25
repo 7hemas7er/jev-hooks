@@ -488,6 +488,21 @@ again with the labels, notes and ids taken away: 64 of 64 agree.
 `node bench/verify.ts bench/holdout-auth.jsonl --only touches_auth` checks it; the rows
 must not change after the measurement.
 
+Measured once on 2026-11-25 (`results/2026-11-25-holdout-auth`): `d_choice` at 0.278
+catches 20 of 22 positives with 6 of 42 false alarms, the current text at 0.7 catches 16
+with 17, AUROC 0.938 against 0.759 (paired 95% of the difference +0.075 to +0.302). The
+criteria fixed before hold.
+
+A last guard was fixed before the next step, because every bench diff is short and
+written: on real commits, `d_choice` must raise no more alarms than the current text. On
+the 91 commits of this repository that are not documentation only (each up to 600 lines,
+some split in chunks; the commits themselves are not a dataset) it does not hold: 16
+alarms at 0.278 against 5 at 0.7, and 10 at 0.5. Most sit on commits that change this
+repository's own `policy.json`: the option that names "an access decorator, guard, policy
+or role check" reads the word policy literally. The wording is not shipped, and neither
+is its threshold chosen after that look: a new one needs a rewritten option, a new
+holdout and the same guard.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of
