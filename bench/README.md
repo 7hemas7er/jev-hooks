@@ -497,11 +497,14 @@ A last guard was fixed before the next step, because every bench diff is short a
 written: on real commits, `d_choice` must raise no more alarms than the current text. On
 the 91 commits of this repository that are not documentation only (each up to 600 lines,
 some split in chunks; the commits themselves are not a dataset) it does not hold: 16
-alarms at 0.278 against 5 at 0.7, and 10 at 0.5. Most sit on commits that change this
-repository's own `policy.json`: the option that names "an access decorator, guard, policy
-or role check" reads the word policy literally. The wording is not shipped, and neither
-is its threshold chosen after that look: a new one needs a rewritten option, a new
-holdout and the same guard.
+alarms at 0.278 against 5 at 0.7, and 10 at 0.5. Eight of the 16 change this
+repository's own `policy.json`, three the code that decides what a project's configuration
+may change, three the tokens of a CI workflow or of the GitHub Action, one only the list of
+models the effort router runs on, one the file of the wordings themselves. These commits
+have no labels (nobody labelled them blind), so the counts are alarms, not false alarms.
+A likely cause, not tested, is the option that names "an access decorator, guard, policy
+or role check". The wording is not shipped, and neither is another threshold chosen after
+that look: going on needs a rewritten option, a new holdout and the same guard.
 
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
