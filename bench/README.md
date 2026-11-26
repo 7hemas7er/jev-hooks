@@ -506,6 +506,19 @@ A likely cause, not tested, is the option that names "an access decorator, guard
 or role check". The wording is not shipped, and neither is another threshold chosen after
 that look: going on needs a rewritten option, a new holdout and the same guard.
 
+## `holdout-auth-2.jsonl`: a second fresh holdout for touches_auth (frozen, measured once)
+
+For a second round of wordings (`variants-auth-2.json`), chosen on every set above and on
+real commits, all of them spent for this question. 64 rows: 22 positives, 42 negatives of
+which 34 hard. Written and labelled the same way as `holdout-auth.jsonl` by two new
+Opus agents, and labelled again blind by a third: 64 of 64 agree. Unlike the first set,
+the writers were also asked for negatives that change a development tool's settings with
+words that sound like access control (CODEOWNERS, branch protection, a CI token's
+permissions, a linter's or a code reviewer's rules, feature flags): the failure the
+first round met on real commits. That tilts the set towards the second round's fix,
+so it is read together with real commits nobody wrote.
+`node bench/verify.ts bench/holdout-auth-2.jsonl --only touches_auth` checks it.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of
