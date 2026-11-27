@@ -331,11 +331,11 @@ test('parseResponse: the 12 valid answers, usage and x_rizzo kept', () => {
 
 test('parseResponse: one malformed out of thirteen → twelve valid', () => {
   const v = JSON.parse(validAnswer(QUESTIONS))
-  v.answers.touches_auth = { type: 'noul', noul: 'high' }
+  v.answers.hardcoded_secret = { type: 'noul', noul: 'high' }
   v.answers.unexpected = { type: 'noul', noul: 0.5 }
   const { response, discarded } = ok(parseResponse(JSON.stringify(v), QUESTIONS))
   assert.equal(Object.keys(response.answers).length, 12)
-  assert.deepEqual(discarded.map((s) => s.id), ['touches_auth'])
+  assert.deepEqual(discarded.map((s) => s.id), ['hardcoded_secret'])
   assert.match(discarded[0].reason, /invalid noul/)
   assert.equal('unexpected' in response.answers, false)
 })
@@ -805,8 +805,9 @@ test('fake: scripted faults of the scenarios', async () => {
   await withFake({ scenario: 'nan' }, async (_, b) => {
     assert.deepEqual(ok(await send(b, body(qs))).discarded.map((s) => s.id), ['hardcoded_secret'])
   })
+  // every choice sums to 0.9: both choices go, the noul stays
   await withFake({ scenario: 'wrong-sum' }, async (_, b) => {
-    assert.deepEqual(ok(await send(b, body(qs))).discarded.map((s) => s.id), ['primary_concern'])
+    assert.deepEqual(ok(await send(b, body(qs))).discarded.map((s) => s.id), ['touches_auth', 'primary_concern'])
   })
   await withFake({ scenario: 'redirect' }, async (_, b) => {
     const e = ko(await send(b, body(qs)))

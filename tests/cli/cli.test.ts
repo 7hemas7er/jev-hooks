@@ -213,7 +213,7 @@ test('injection.diff: SECURITY REVIEW from the floor, detector escalation (exit 
   assert.ok(r.escalation.some((v) => v.reason === 'detector' && v.files.includes('src/util.py')))
 })
 
-test('uncertain.diff: touches_auth 0.78 above the escalation threshold, NITS with the question to Claude; --escalate gives the prompt', async () => {
+test('uncertain.diff: touches_auth 0.90 above the escalation threshold, NITS with the question to Claude; --escalate gives the prompt', async () => {
   const { code, r } = await json(['--diff', demo['uncertain.diff'], '--escalate'])
   assert.equal(code, 1)
   assert.equal(r.lane, 'NITS')
@@ -221,8 +221,9 @@ test('uncertain.diff: touches_auth 0.78 above the escalation threshold, NITS wit
   const v = r.escalation.find((x) => x.reason === 'threshold')
   assert.ok(v, JSON.stringify(r.escalation))
   assert.equal(v.check, 'touches_auth')
-  assert.ok(Math.abs((v.p ?? 0) - 0.78) < 0.001)
-  assert.ok((v.threshold ?? 1) <= 0.78)
+  // 1 − p(none) of the scenario's choice, which the provisional profile leaves as it is
+  assert.ok(Math.abs((v.p ?? 0) - 0.9) < 0.001, String(v.p))
+  assert.ok((v.threshold ?? 1) <= 0.9)
   assert.equal(v.band, undefined)
   assert.deepEqual(v.files, ['src/middleware/session.py'])
   assert.match(r.escalation_prompt ?? '', /touches_auth/)

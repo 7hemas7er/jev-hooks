@@ -84,7 +84,7 @@ are in `bench/results/`.
 |---|---|--:|--:|---|---|---|
 | hardcoded_secret | noul | 0.924 | 0.987 | ≥ 0.30 → escalate | 0.78 (7/9) · 0.009 (1/109) | 0.73 (8/11) · 0.009 (1/110) |
 | injection_risk | choice, 1 − P(none) | 1.000 | 0.976 | ≥ 0.99 → escalate, unless docs only | 1.00 (8/8) · 0.036 (4/110) | 0.83 (10/12) · 0.064 (7/109) |
-| touches_auth | noul | 0.980 | 0.969 | ≥ 0.70 → escalate, unless docs only | 0.60 (6/10) · 0.028 (3/108) | 0.71 (10/14) · 0.047 (5/107) |
+| touches_auth | choice, 1 − P(none) (since 2026-11-27) | 1.000 | 0.995 | ≥ 0.845 → escalate, unless docs only | 1.00 (10/10) · 0 (0/108) | 0.79 (11/14) · 0.009 (1/107) |
 | weakens_tests | choice, 1 − P(none) | 0.999 | 0.995 | ≥ 0.50 → escalate, unless docs only or the second reading < 0.30 | 1.00 (9/9) · 0.018 (2/109) | 0.92 (11/12) · 0.009 (1/109) |
 | breaks_api | choice, 1 − P(none) | 0.930 | 0.901 | ≥ 0.90 unless docs only, note | 0.67 (8/12) · 0.019 (2/106) | 0.81 (13/16) · 0.048 (5/105) |
 | data_migration | choice, 1 − P(none) | 1.000 | 0.992 | ≥ 0.76, note | 1.00 (7/7) · 0 (0/111) | 1.00 (10/10) · 0.027 (3/111) |
@@ -229,6 +229,31 @@ comparison:
   far worse than rizzo, and two review questions point the wrong way. No text or
   threshold was chosen on it, and the holdout sets were not used.
 
+
+## touches_auth reworded (2026-11-27)
+
+The noul answered yes to credentials the application uses to call other services (S3,
+SMTP, SMS, payment), which the bench definition calls No: 15 of its 18 false alarms at
+0.70 on dev, holdout and holdout-2. Two rounds of wordings were measured on the sets
+already spent, chosen with rules written before each measurement, and checked once on
+sets nobody had measured (`bench/README.md`, `holdout-auth.jsonl` and
+`holdout-auth-2.jsonl`). The first round's choice caught more on the bench and raised
+16 alarms against 5 on 91 real commits of this repository. The second round's,
+`h_option` in `bench/variants-auth-2.json`, names what becomes reachable instead of "a
+guard, policy or role check":
+
+| | previous noul at 0.70 | `h_option` at 0.845 |
+|---|---|---|
+| dev, holdout, holdout-2, holdout-auth (61 positives, 362 negatives) | 46 · 35 | 52 · 6 |
+| 175 real commits of three repositories (9 positives; every commit a wording scored 0.2 or more, and a sample of the rest, labelled blind) | 8 · 9 | 7 · 9 |
+| holdout-auth-2, fresh (22 · 42) | 19 · 13 | 19 · 8 |
+| 71 real commits of two other repositories, fresh (3 positives) | 3 · 1 | 3 · 0 |
+
+Each cell is positives caught · false alarms. The fresh real commits are few, and
+`holdout-auth-2` was written with negatives of the kind the second round set out to fix
+(tool settings that sound like access control), so its gain is the optimistic end. The
+real commits are public or this repository's; only counts are published.
+
 ## Calibration
 
 The Spark's profile (`spark-bf16-2026-09`) is calibrated since 2026-09-30:
@@ -243,7 +268,7 @@ and adopted it where it lowers the log-loss of the holdout measurement
 | `injection_risk` | 0.52 | −3.67 | 0.657 → 0.124 | adopted |
 | `breaks_api` | 0.60 | −1.99 | 0.410 → 0.221 | adopted |
 | `adds_tests` (missing tests) | 0.51 | 1.09 | 0.429 → 0.328 | adopted |
-| `touches_auth` | 0.35 | −1.05 | 0.237 → 0.160 | adopted |
+| `touches_auth` | 0.35 | −1.05 | 0.237 → 0.160 | adopted, dropped on 2026-11-27 with the new text |
 | `data_migration` | 0.52 | −1.98 | 0.152 → 0.066 | adopted |
 | `weakens_tests` | 0.52 | −2.57 | 0.144 → 0.096 | adopted |
 | `debug_leftovers` | 0.65 | −1.55 | 0.132 → 0.104 | adopted |
@@ -263,8 +288,8 @@ it. Every slope is below 1: rizzo is overconfident, and the fit pulls its 0.99s 
   plugin's policy and with one that has bands and disagreement on the fitted questions
   (`tests/bench/simulate.test.ts`): same lane, rules and escalation items. What changes
   is what is shown: the calibrated value, next to the threshold and band moved through
-  the same fit. `injection_risk`'s 0.99 is shown as 0.22, `touches_auth`'s 0.70 as
-  0.32. Choosing thresholds on the calibrated scale is a decision of its own, taken
+  the same fit. `injection_risk`'s 0.99 is shown as 0.22 (`touches_auth`'s 0.70 was shown
+  as 0.32 until its text changed on 2026-11-27: the new one is not fitted). Choosing thresholds on the calibrated scale is a decision of its own, taken
   rule by rule (2026-10-01): a uniform calibrated 0.5 would lose positives on
   `injection_risk` (holdout 10/12 → 7/12), `weakens_tests` (12/12 → 9/12) and
   `debug_leftovers` (10/11 → 7/11). Only `data_migration` moved, from 0.20 raw to 0.76

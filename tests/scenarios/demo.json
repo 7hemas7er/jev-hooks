@@ -7,6 +7,10 @@
       "probabilities": { "none": 0.01, "code_without_test_file": 0.99, "test_unrelated": 0, "fixtures_only": 0 },
       "confidence": 0.9867
     } } },
-    { "if_state_contains": "middleware", "answers": { "touches_auth": 0.78 } }
+    { "if_state_contains": "middleware", "answers": { "touches_auth": {
+      "type": "choice", "choice": "protection_added_or_removed",
+      "probabilities": { "none": 0.1, "protection_added_or_removed": 0.9, "login_or_session": 0, "token_or_signature": 0, "cors_or_csrf": 0 },
+      "confidence": 0.9
+    } } }
   ]
 }

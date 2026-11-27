@@ -306,14 +306,17 @@ test('explain: source of the threshold (policy, profile, changed question, uncal
   // with the rule put back in BLOCK, without an action, the band comes back
   const inBlock = { ...c, policy: valueOf(validatePolicy(withSecretInBlock(readText('config/policy.json')), CHECKS, 'policy.json')) }
   assert.match(renderExplanation('hardcoded_secret', inBlock, { profile: rizzo, mode: 'client', origin: '--profile' }), /band 0\.56–0\.81 \(δ = 0\.62 in logit\)/)
-  // the measured Spark profile is calibrated per question: the policy's 0.70 moves with
-  // touches_auth's fit, σ(0.3489 · logit(0.70) − 1.0507) = 0.32
+  // the measured Spark profile is calibrated per question: the policy's 0.99 moves with
+  // injection_risk's fit, σ(0.5244 · logit(0.99) − 3.6716) = 0.22
   const spark = CALIB.profiles.find((p) => p.name === 'spark-bf16-2026-09') as Profile
-  const sp = renderExplanation('touches_auth', c, { profile: spark, mode: 'client', origin: 'last recorded review' })
-  assert.match(sp, /touches_auth ≥ 0\.70 unless docs_only ≥ 0\.50 {2}→ escalation to Claude\n +effective threshold 0\.32 · source: policy \(~\/\.config\/jev-hooks\/policy\.json\)\n/)
-  assert.match(sp, /calibrator: per question \(a = 0\.3489, b = -1\.0507, n = 118, errors = 10\) · profile spark-bf16-2026-09 \(calibrated; last recorded review\)/)
-  // hardcoded_secret has no fit: its threshold stays the policy's
-  assert.match(renderExplanation('hardcoded_secret', c, { profile: spark, mode: 'client', origin: 'x' }), new RegExp(`effective threshold ${thr('hardcoded_secret')} · source: policy`))
+  const sp = renderExplanation('injection_risk', c, { profile: spark, mode: 'client', origin: 'last recorded review' })
+  assert.match(sp, /injection_risk ≥ 0\.99 unless docs_only ≥ 0\.50 {2}→ escalation to Claude\n +effective threshold 0\.22 · source: policy \(~\/\.config\/jev-hooks\/policy\.json\)\n/)
+  assert.match(sp, /calibrator: per question \(a = 0\.5244, b = -3\.6716, n = 118, errors = 8, on the logit of 1 − p\(none\)\) · profile spark-bf16-2026-09 \(calibrated; last recorded review\)/)
+  // hardcoded_secret and touches_auth (text changed after the fit) have no fit: their
+  // thresholds stay the policy's
+  for (const id of ['hardcoded_secret', 'touches_auth']) {
+    assert.match(renderExplanation(id, c, { profile: spark, mode: 'client', origin: 'x' }), new RegExp(`effective threshold ${thr(id)} · source: policy`), id)
+  }
   assert.match(base, new RegExp(`sha256 ${questionHash(wireQuestion(CHECKS.defs.hardcoded_secret))}`))
 
   const sha = questionHash(wireQuestion(CHECKS.defs.hardcoded_secret))

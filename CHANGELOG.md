@@ -5,6 +5,17 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+### Changed
+
+- `touches_auth` asks a different question: a choice of the kind of access change
+  (`1 − p(none)`, escalation at 0.845), instead of a yes/no. The old text said yes to
+  credentials the application uses to call other services (S3, SMTP, SMS, payment),
+  which the bench definition calls No: 15 of its 18 false alarms at 0.70 on three bench
+  sets. On a fresh holdout the new text catches the same 19 of 22 positives with 8
+  false alarms of 42 instead of 13, and on 71 real commits of two public repositories
+  all 3 positives with no false alarm instead of one. Its Spark calibration entry keeps
+  the raw value until a new fit (`docs/evaluation.md`, "touches_auth reworded").
+
 ## 0.24.3 — 2026-11-24
 
 The subagent router's summary line comes out once per turn of the session.

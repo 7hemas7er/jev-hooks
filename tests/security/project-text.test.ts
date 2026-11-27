@@ -45,10 +45,10 @@ const json = (rel: string): any => JSON.parse(readFileSync(join(ROOT, rel), 'utf
 const SCENARIO: Scenario = {
   rules: [
     { if_state_contains: 'SIGNING_KEY', answers: { hardcoded_secret: 0.874 } },
-    // touches_auth 0.78: above the escalation threshold (the provisional profile does
-    // not transform nouls). blast_radius at the highest level: a notable score enters
+    // touches_auth 1 − p(none) = 0.90: above the escalation threshold (the provisional
+    // profile does not transform it). blast_radius at the highest level: a notable score enters
     // the context
-    { if_state_contains: 'middleware', answers: { touches_auth: 0.78, blast_radius: 3 } },
+    { if_state_contains: 'middleware', answers: { touches_auth: { type: 'choice', choice: 'protection_added_or_removed', probabilities: { none: 0.1, protection_added_or_removed: 0.9, login_or_session: 0, token_or_signature: 0, cors_or_csrf: 0 }, confidence: 0.9 }, blast_radius: 3 } },
   ],
 }
 

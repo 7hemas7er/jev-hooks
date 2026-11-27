@@ -519,6 +519,20 @@ first round met on real commits. That tilts the set towards the second round's f
 so it is read together with real commits nobody wrote.
 `node bench/verify.ts bench/holdout-auth-2.jsonl --only touches_auth` checks it.
 
+The second round's rule, written before it was measured: on every spent set and on 204
+real commits (this repository's and two public ones, the commits a wording scored 0.2
+or more and a sample of the rest labelled blind by two agents each, 0 disagreements), a
+threshold with at most 3% false alarms on the synthetic rows and no more alarms than the
+current text on the real commits, then the highest TPR. That chose `h_option` at 0.845
+(`results/2026-11-26-auth2-*`): 52 of 61 synthetic positives with 6 of 362 false alarms,
+against 46 and 35 for the current text at 0.7. Measured once on 2026-11-27
+(`results/2026-11-27-holdout-auth-2`, `variants-auth-2-holdout.json`): 19 of 22 positives
+with 8 of 42 false alarms, against 19 and 13 for the current text; on 71 real commits of
+two other public repositories, labelled the same way, 3 of 3 positives with no false
+alarm, against 3 and 1. The criteria fixed before hold, and `h_option` is the text of
+`touches_auth` in `config/checks.json` since then. The fresh real commits are few and the
+set was written with the failure in mind: the gain that counts is the smaller one.
+
 ## Diffs split into chunks (2026-10-07, no dataset here)
 
 Every row of the sets above fits in one chunk, while the live false alarms of

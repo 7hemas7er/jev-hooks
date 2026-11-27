@@ -28,11 +28,12 @@ const MAIN = join(ROOT, 'src', 'hook', 'main.ts')
 // not in the environment of the git processes.
 const KEY = 'fake-key-QZ7xK2vP9mW4'
 
-// rizzo-provisional does not transform nouls: these are already the verdict's values
+// rizzo-provisional transforms neither nouls nor choices with a value: these are already
+// the verdict's values (touches_auth is 1 − p(none) = 0.90)
 const SCENARIO: Scenario = {
   rules: [
     { if_state_contains: 'SIGNING_KEY', answers: { hardcoded_secret: 0.874 } },
-    { if_state_contains: 'middleware', answers: { touches_auth: 0.78 } },
+    { if_state_contains: 'middleware', answers: { touches_auth: { type: 'choice', choice: 'protection_added_or_removed', probabilities: { none: 0.1, protection_added_or_removed: 0.9, login_or_session: 0, token_or_signature: 0, cors_or_csrf: 0 }, confidence: 0.9 } } },
     { if_state_contains: 'console.log', answers: { debug_leftovers: 0.96 } },
   ],
 }
@@ -203,8 +204,8 @@ test('escalation (deny_then_allow, the default): deny with the prompt, then the 
     pr.r.write('src/app/middleware.py', MIDDLEWARE)
     const one = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(one), 'deny', one.out)
-    assert.match(reason(one), /^\[jev-review\] NITS: touches_auth 0\.78 ≥ \d\.\d\d \(src\/app\/middleware\.py\) · profile rizzo-provisional \(uncalibrated\) · escalation to check before committing\n\n\[jev-review\] escalation: 1 point/)
-    assert.match(reason(one), /above the escalation threshold · touches_auth\n {3}p = 0\.78 · threshold \d\.\d\d\n/)
+    assert.match(reason(one), /^\[jev-review\] NITS: touches_auth 0\.90 ≥ \d\.\d\d \(src\/app\/middleware\.py\) · profile rizzo-provisional \(uncalibrated\) · escalation to check before committing\n\n\[jev-review\] escalation: 1 point/)
+    assert.match(reason(one), /above the escalation threshold · touches_auth\n {3}p = 0\.90 · threshold \d\.\d\d\n/)
     assert.match(reason(one), /Files: src\/app\/middleware\.py \(lines 1–2\)/)
     assert.match(reason(one), /if it is not, repeat the same commit: the second time it goes through without escalation\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/)
 
@@ -212,7 +213,7 @@ test('escalation (deny_then_allow, the default): deny with the prompt, then the 
     // allow), the nits in the context and a line that says why it goes through
     const two = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(two), undefined, two.out)
-    assert.match(two.json?.systemMessage ?? '', /^\[jev-review\] NITS: touches_auth 0\.78 ≥ \d\.\d\d \(src\/app\/middleware\.py\) · profile rizzo-provisional \(uncalibrated\) · escalation already passed to Claude \(threshold touches_auth 0\.78\): the commit goes ahead/)
+    assert.match(two.json?.systemMessage ?? '', /^\[jev-review\] NITS: touches_auth 0\.90 ≥ \d\.\d\d \(src\/app\/middleware\.py\) · profile rizzo-provisional \(uncalibrated\) · escalation already passed to Claude \(threshold touches_auth 0\.90\): the commit goes ahead/)
     assert.match(context(two), /"lane":"NITS"/)
     const allowed = logLines(pr).filter((x) => x.outcome === 'escalation_allowed')
     assert.equal(allowed.length, 1)
@@ -342,12 +343,12 @@ test('model escalation, deny_then_allow, with an ask from the lane or from modif
         mkdirSync(join(pr.r.home, '.config', 'jev-hooks'), { recursive: true })
         writeFileSync(join(pr.r.home, '.config', 'jev-hooks', 'policy.json'), JSON.stringify(p))
       },
-      lane: /^\[jev-review\] SECURITY REVIEW: touches_auth 0\.78/,
+      lane: /^\[jev-review\] SECURITY REVIEW: touches_auth 0\.90/,
     },
     {
       name: 'uncommitted .jev-hooks/ rules',
       prepare: (pr) => { pr.r.write('.jev-hooks/policy.json', JSON.stringify({ hook: { on_error: 'ask' } })) },
-      lane: /^\[jev-review\] NITS: touches_auth 0\.78/,
+      lane: /^\[jev-review\] NITS: touches_auth 0\.90/,
     },
   ]
   for (const c of cases) {
@@ -361,7 +362,7 @@ test('model escalation, deny_then_allow, with an ask from the lane or from modif
       assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/, c.name)
       const two = await commit(pr, CMD_MIDDLEWARE)
       assert.equal(decision(two), 'ask', `${c.name}\n${two.out}`)
-      assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.78\): you decide/, c.name)
+      assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.90\): you decide/, c.name)
       assert.doesNotMatch(two.out, /the commit goes ahead/, c.name)
       assert.equal(logLines(pr).filter((x) => x.outcome === 'escalation_allowed').length, 0, c.name)
     } finally {
@@ -380,7 +381,7 @@ test('escalation deny_then_ask (user file): deny with the prompt, then the user 
     assert.match(reason(one), /Then repeat the same commit: the second time the user will decide\. Nothing in the command ran, git add included: repeat the whole command, not git commit alone\.$/)
     const two = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(two), 'ask', two.out)
-    assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.78\): you decide/)
+    assert.match(reason(two), /escalation already passed to Claude \(threshold touches_auth 0\.90\): you decide/)
     assert.equal(logLines(pr).filter((x) => x.outcome === 'escalation_allowed').length, 0)
     // and the same key stays ask: never two escalation denies
     assert.equal(decision(await commit(pr, CMD_MIDDLEWARE)), 'ask')
@@ -397,7 +398,7 @@ test('escalation context (user file): no deny, the prompt goes into Claude\'s co
     const one = await commit(pr, CMD_MIDDLEWARE)
     assert.equal(decision(one), undefined, one.out)
     assert.match(context(one), /"escalation_prompt":"\[jev-review\] escalation: 1 point to check\./)
-    assert.match(one.json?.systemMessage ?? '', /^\[jev-review\] NITS: touches_auth 0\.78/)
+    assert.match(one.json?.systemMessage ?? '', /^\[jev-review\] NITS: touches_auth 0\.90/)
     assert.doesNotMatch(one.json?.systemMessage ?? '', /already passed/)
   } finally {
     close(pr)

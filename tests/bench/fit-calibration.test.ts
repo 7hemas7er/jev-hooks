@@ -123,7 +123,8 @@ test('fit-calibration CLI: writes report.md and profile.json, refuses mixed back
   const report = readFileSync(join(base, 'out', 'report.md'), 'utf8')
   assert.match(report, /^# Calibration fit \(2026-09-30\)/)
   assert.match(report, /\| touches_auth \| 0\.\d{4} \| -\d\.\d{4} \| 300 \(\d+\) \| 300 \(\d+\) \|.*\| adopted \|/)
-  assert.match(report, /\| NITS \| touches_auth ≥ \| 0\.70 \| 0\.\d{3} \|/)
+  // the policy's 0.845, shown with two decimals
+  assert.match(report, /\| NITS \| touches_auth ≥ \| 0\.84 \| 0\.\d{3} \|/)
   const profile = JSON.parse(readFileSync(join(base, 'out', 'profile.json'), 'utf8'))
   assert.ok(profile.per_question.touches_auth.a > 0)
   assert.equal(run('--fit', fitDir, '--check', checkDir, '--out', join(base, 'out')), 2)

@@ -60,8 +60,8 @@ test('the four default JSON files are valid', () => {
   assert.equal(pem?.exclude_paths, p.test_paths, '"test_paths" resolves to the test_paths regexes')
   const k = valueOf(validateCalibration(CALIBRATION, 'calibration.json'))
   assert.deepEqual(k.profiles.map((x) => x.name), ['spark-bf16-2026-09', 'rizzo-provisional', 'jev', 'clm-provisional', 'unknown'])
-  // the wordings measured on the bench: five choices with a value of 1 − p(none), none first
-  assert.deepEqual(c.order.filter((id) => c.defs[id].value), ['injection_risk', 'weakens_tests', 'weakens_expected', 'adds_tests', 'breaks_api', 'data_migration'])
+  // the wordings measured on the bench: seven choices with a value of 1 − p(none), none first
+  assert.deepEqual(c.order.filter((id) => c.defs[id].value), ['injection_risk', 'touches_auth', 'weakens_tests', 'weakens_expected', 'adds_tests', 'breaks_api', 'data_migration'])
   for (const id of c.order) {
     const v = c.defs[id].value
     if (v) assert.deepEqual([v, Object.keys(c.defs[id].criteria as object)[0]], [{ kind: 'one_minus', option: 'none' }, 'none'], id)
@@ -92,17 +92,21 @@ test('Spark profile: calibrated per question from its fit, no thresholds of its 
   for (const l of p.lanes) for (const r of l.rules) thresholds[r.check] = r.value
   // the entries are those scripts/fit-calibration.ts wrote
   const fit = json('bench/results/2026-09-30-calibration/profile.json') as { per_question: Record<string, Record<string, unknown>> }
+  // touches_auth changed text on 2026-11-27 (bench/variants-auth-2.json, h_option): not
+  // fitted, its entry ties the raw value to the new text
+  const refitted = new Set(['touches_auth'])
   for (const [id, e] of Object.entries(spark.per_question ?? {})) {
-    if (Object.hasOwn(fit.per_question, id)) assert.deepEqual({ ...e }, fit.per_question[id], id)
+    if (refitted.has(id)) assert.deepEqual({ ...e }, { sha256: e.sha256 }, id)
+    else if (Object.hasOwn(fit.per_question, id)) assert.deepEqual({ ...e }, fit.per_question[id], id)
   }
   // the questions measured on the bench: those the rules decide on, and those an unless asks
   const asked = new Set(Object.keys(thresholds))
   for (const l of p.lanes) for (const r of l.rules) for (const u of r.unless ?? []) if (c.defs[u.check].source === 'model') asked.add(u.check)
   assert.deepEqual(Object.keys(spark.per_question ?? {}).sort(), [...asked].sort())
-  const variants = { ...json('bench/variants.json'), weakens_expected: json('bench/variants-weakens-2.json').weakens_tests }
+  const variants = { ...json('bench/variants.json'), weakens_expected: json('bench/variants-weakens-2.json').weakens_tests, touches_auth: json('bench/variants-auth-2.json').touches_auth }
   const measured: Record<string, string> = {
     injection_risk: 'c_scelta', weakens_tests: 'c_scelta', adds_tests: 'c_scelta', breaks_api: 'c_scelta', data_migration: 'c_scelta',
-    debug_leftovers: 'a_letterale', hardcoded_secret: 'attuale', touches_auth: 'attuale', weakens_expected: 'i_expected',
+    debug_leftovers: 'a_letterale', hardcoded_secret: 'attuale', touches_auth: 'h_option', weakens_expected: 'i_expected',
   }
   for (const [id, item] of Object.entries(spark.per_question ?? {})) {
     const sent = wireQuestion(c.defs[id])
@@ -131,8 +135,10 @@ test('checks.json hashes against the 2026-09-26 report: only the choices change,
   for (const m of report.matchAll(/^\| (\w+) \| (\w+)(?: \(checks\.json\))? \| (?:noul|choice|score) \| `([0-9a-f]{64})` \|$/gm)) {
     fromReport.set(`${m[1]}.${m[2]}`, m[3])
   }
+  // touches_auth left out: its text changed on 2026-11-27, and its hash is the one in
+  // bench/results/2026-11-26-auth2-* (the Spark profile test checks it)
   const measured: Record<string, string> = {
-    hardcoded_secret: 'attuale', injection_risk: 'c_scelta', touches_auth: 'attuale', weakens_tests: 'c_scelta',
+    hardcoded_secret: 'attuale', injection_risk: 'c_scelta', weakens_tests: 'c_scelta',
     adds_tests: 'c_scelta', breaks_api: 'c_scelta', data_migration: 'c_scelta', debug_leftovers: 'a_letterale',
   }
   const old = (w: object): string => createHash('sha256').update(canonical(w as Json), 'utf8').digest('hex')
@@ -386,8 +392,8 @@ const checksCases: [string, Mod, string, RegExp][] = [
   // 7998 characters of detail pass on their own, but "x: " + detail makes 8001
   ['8000 exceeded only with "name: detail"', (c) => { c.primary_concern.criteria.x = 'd'.repeat(7998) }, '/primary_concern/criteria/x', /8001 characters as "name: detail"/],
   // 7996 + "Yes. " makes 8001; with "No. " it would be 8000 and would pass
-  ['8000 exceeded only with "Yes. "', (c) => { c.touches_auth.criteria.true = 't'.repeat(7996) }, '/touches_auth/criteria/true', /8001 characters with "Yes. " in front/],
-  ['unknown noul criterion', (c) => { c.touches_auth.criteria.maybe = 'dunno' }, '/touches_auth/criteria/maybe', /only allows the criteria "true" and "false"/],
+  ['8000 exceeded only with "Yes. "', (c) => { c.hardcoded_secret.criteria.true = 't'.repeat(7996) }, '/hardcoded_secret/criteria/true', /8001 characters with "Yes. " in front/],
+  ['unknown noul criterion', (c) => { c.hardcoded_secret.criteria.maybe = 'dunno' }, '/hardcoded_secret/criteria/maybe', /only allows the criteria "true" and "false"/],
   ['chunk scope on a score', (c) => { c.blast_radius.scope = 'chunk' }, '/blast_radius/scope', /only applies to the nouls/],
   ['invert on a choice', (c) => { c.primary_concern.invert = true }, '/primary_concern/invert', /only applies to the nouls asked of the model/],
   // the uncertainty band is in logit, on a probability: a critical score or choice
@@ -397,7 +403,7 @@ const checksCases: [string, Mod, string, RegExp][] = [
   ['critical on a computed question', (c) => { c.docs_only.critical = true }, '/docs_only/critical', /critical only applies to the nouls asked of the model/],
   ['chunk scope on a choice without a value', (c) => { c.primary_concern.scope = 'chunk' }, '/primary_concern/scope', /only applies to the nouls asked of the model and the choices with a "value"/],
   // "value": a choice as a probability, 1 − p(option)
-  ['value on a noul', (c) => { c.touches_auth.value = '1-p(none)' }, '/touches_auth/value', /only applies to choices asked of the model/],
+  ['value on a noul', (c) => { c.hardcoded_secret.value = '1-p(none)' }, '/hardcoded_secret/value', /only applies to choices asked of the model/],
   ['value on a score', (c) => { c.blast_radius.value = '1-p(0)' }, '/blast_radius/value', /only applies to choices asked of the model/],
   ['value on a computed question', (c) => { c.docs_only.value = '1-p(none)' }, '/docs_only/value', /only applies to choices asked of the model/],
   ['value in another form', (c) => { c.primary_concern.value = 'p(nothing)' }, '/primary_concern/value', /expected "1-p\(<option>\)", for example "1-p\(none\)", found "p\(nothing\)"/],
@@ -489,7 +495,7 @@ test('policy.json: a choice with a value enters the rules, on the [0, 1] scale, 
 
 test('checks.json: 7996 characters with "No. " make 8000 and pass', () => {
   const c = structuredClone(CHECKS)
-  c.touches_auth.criteria.false = 'f'.repeat(7996)
+  c.hardcoded_secret.criteria.false = 'f'.repeat(7996)
   valueOf(validateChecks(c, 'checks.json'))
 })
 
@@ -1028,7 +1034,7 @@ test('project: problems and notes about project files quote neither keys nor val
     ['check id', withChecks((c) => { c[f()] = { type: 'noul', instructions: 'x?' } }), /\/‹key›: invalid id/],
     ['unknown field', withChecks((c) => { c.touches_auth[f()] = true }), /\/touches_auth\/‹key›: unknown field/],
     ['type value', withChecks((c) => { c.primary_concern.type = f() }), /\/primary_concern\/type: expected one of "noul", "choice", "score", found a string \(text not shown\)/],
-    ['noul criterion', withChecks((c) => { c.touches_auth.criteria[f()] = 'x' }), /\/touches_auth\/criteria\/‹key›: a noul only allows/],
+    ['noul criterion', withChecks((c) => { c.hardcoded_secret.criteria[f()] = 'x' }), /\/hardcoded_secret\/criteria\/‹key›: a noul only allows/],
     ['value option', withChecks((c) => { c.primary_concern.value = `1-p(${f()})` }),
       /\/primary_concern\/value: (option \(text not shown\) is not among those in criteria|expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\))/],
     ['value form', withChecks((c) => { c.primary_concern.value = f() }), /\/primary_concern\/value: expected "1-p\(<option>\)", for example "1-p\(none\)", found \(text not shown\)/],
