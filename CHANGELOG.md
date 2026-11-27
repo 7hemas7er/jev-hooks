@@ -5,6 +5,10 @@ a release is a separate `chore(release): X.Y.Z` commit.
 
 ## Unreleased
 
+## 0.24.4 — 2026-11-27
+
+`touches_auth` stops escalating credentials for other services.
+
 ### Changed
 
 - `touches_auth` asks a different question: a choice of the kind of access change
